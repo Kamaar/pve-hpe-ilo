@@ -8,6 +8,7 @@ SCRIPTS      := sbin/pve-hpe-ilo sbin/pve-hpe-ilo-poller
 test: syntax
 	perl -I perl t/normalize.t
 	perl -I perl t/smart.t
+	perl -I perl t/ssacli.t
 	bash t/patch.sh
 
 # Everything compiles without a Proxmox node present; API.pm is the exception,

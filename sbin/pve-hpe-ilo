@@ -13,6 +13,7 @@ use POSIX qw(strftime);
 use PVE::HPEiLO::Config;
 use PVE::HPEiLO::Redfish;
 use PVE::HPEiLO::Smart;
+use PVE::HPEiLO::Version;
 
 my $usage = <<"EOF";
 usage: pve-hpe-ilo <command> [options]
@@ -25,6 +26,7 @@ commands:
                    reported, and which serial numbers matched
   raw <path>       pretty-print any Redfish resource, e.g.
                    raw /redfish/v1/Chassis/1/Thermal/
+  version          print the package version
 
 options:
   --config <file>  alternative config file
@@ -199,7 +201,9 @@ sub print_sample {
     }
 }
 
-if ($cmd eq 'probe') {
+if ($cmd eq 'version') {
+    print "pve-hpe-ilo $PVE::HPEiLO::Version::VERSION\n";
+} elsif ($cmd eq 'probe') {
     my ($client, $cfg) = client();
     my $sample = $client->collect(storage => $opt{storage});
 

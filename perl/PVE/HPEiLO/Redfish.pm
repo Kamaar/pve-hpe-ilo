@@ -300,10 +300,15 @@ sub read_storage {
     for my $uri (_members($ctrls)) {
 	my $c = $self->get($uri);
 
+	# "Slot 0" -> 0. ssacli addresses controllers by bare slot number, so
+	# the LED control needs it separated out.
+	my ($slot) = ($c->{Location} // '') =~ /(\d+)/;
+
 	my $ctrl = {
 	    model            => $c->{Model},
 	    serial           => $c->{SerialNumber},
 	    location         => $c->{Location},
+	    slot             => $slot,
 	    firmware         => _fw_version($c),
 	    mode             => $c->{CurrentOperatingMode},
 	    cache_mib        => $c->{CacheMemorySizeMiB},

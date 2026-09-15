@@ -217,11 +217,19 @@ missing — do not synthesize a rollup to fill the space.
 - **Core Perl only.** `HTTP::Tiny`, `MIME::Base64`, `POSIX` plus `JSON`, all
   present on a stock Proxmox node. Do not add CPAN or apt dependencies — the
   point is that installing this does not drag packages onto a hypervisor.
-- **Read-only.** Fan control is out of scope (the BMC owns the fan curve), and
-  so is RAID configuration: iLO 4's `SmartStorage` is read-only, and the
-  writable `SmartStorageConfig` resource is Gen10+. Anything that writes to the
-  array needs `ssacli` on the host and must be a deliberate, separately
-  reviewed addition — not a button that appears next to a status table.
+- **Essentially read-only.** The locate LED (`PVE::HPEiLO::Ssacli`) is the one
+  exception and must stay the only one. Fan control is impossible (the BMC owns
+  the curve), and RAID configuration is out of scope: iLO 4's `SmartStorage` is
+  read-only and writable `SmartStorageConfig` is Gen10+. Anything that could
+  destroy an array does not belong in a status panel, whatever the API allows.
+- **Every write path validates its own arguments.** `Ssacli::valid_slot` and
+  `valid_location` exist because those strings become `ssacli` arguments. The
+  list form of `exec()` keeps a shell out of it, but ssacli would still read a
+  crafted value as one of its own keywords. The API schema constrains them too;
+  the module checks again because it is reachable from the command line.
+  `t/ssacli.t` pins the rejections.
+- **Version lives in `PVE::HPEiLO::Version` only.** The CLI, the poller's
+  startup log, the API response and the panel header all read it from there.
 - Credentials live in `/etc/pve-hpe-ilo/config.json`, mode 0600, deliberately
   **not** under `/etc/pve` — that path is group-readable by `www-data`
   (pveproxy).

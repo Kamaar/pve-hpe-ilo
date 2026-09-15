@@ -17,6 +17,8 @@ use JSON;
 use PVE::JSONSchema qw(get_standard_option);
 
 use PVE::HPEiLO::Config;
+use PVE::HPEiLO::Ssacli;
+use PVE::HPEiLO::Version;
 
 my $registered = 0;
 
@@ -111,7 +113,61 @@ sub register {
 
 	    $data->{status} //= 'error';
 
+	    # Comes from the module actually loaded in pvedaemon, so it reports
+	    # what this node is running rather than what the cache was written by.
+	    $data->{version} = $PVE::HPEiLO::Version::VERSION;
+
 	    return $data;
+	},
+    });
+
+    # The only write in the package. Separate path and separate privilege from
+    # the read endpoint, so granting someone the panel does not grant them this.
+    PVE::API2::Nodes::Nodeinfo->register_method({
+	name => 'hpe_ilo_led',
+	path => 'hpe-ilo-led',
+	method => 'POST',
+	protected => 1,
+	proxyto => 'node',
+	permissions => {
+	    check => ['perm', '/nodes/{node}', ['Sys.Modify']],
+	},
+	description => "Turn the locate LED on a Smart Array drive bay on or"
+	    . " off, so the right disk can be identified before pulling it.",
+	parameters => {
+	    additionalProperties => 0,
+	    properties => {
+		node => get_standard_option('pve-node'),
+		slot => {
+		    type => 'string',
+		    pattern => '^[0-9]{1,3}$',
+		    description => 'Smart Array controller slot number.',
+		},
+		drive => {
+		    type => 'string',
+		    pattern => '^([0-9]{1,2}[IE]:[0-9]{1,3}:[0-9]{1,3}|[0-9]{1,3}:[0-9]{1,3})$',
+		    description => 'Drive bay, as port:box:bay (e.g. 1I:3:4).',
+		},
+		state => {
+		    type => 'string',
+		    enum => ['on', 'off'],
+		    description => 'Whether to light the bay LED.',
+		},
+	    },
+	},
+	returns => { type => 'null' },
+	code => sub {
+	    my ($param) = @_;
+
+	    # The schema already constrains these; Ssacli validates them again
+	    # because it is also reachable from the command line.
+	    PVE::HPEiLO::Ssacli::set_led(
+		slot     => $param->{slot},
+		location => $param->{drive},
+		state    => $param->{state},
+	    );
+
+	    return undef;
 	},
     });
 }

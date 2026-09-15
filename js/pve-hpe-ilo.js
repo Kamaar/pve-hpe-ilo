@@ -352,6 +352,7 @@ Ext.define('PVE.hpe.StoragePanel', {
 		fields: ['controller', 'location', 'model', 'media', 'interface',
 		    'capacity_gb', 'celsius', 'trip_celsius', 'power_hours', 'ssd_wear',
 		    'grown_defects', 'led',
+		    'slot', 'led_control',
 		    'health'],
 		sorters: [{ property: 'location' }],
 		data: [],
@@ -454,6 +455,52 @@ Ext.define('PVE.hpe.StoragePanel', {
 			return html;
 		    },
 		},
+		{
+		    // The only control in the panel that writes to hardware.
+		    // Lighting a bay is how you tell eight identical disks
+		    // apart before pulling one.
+		    xtype: 'actioncolumn',
+		    header: gettext('Locate'),
+		    width: 70,
+		    align: 'center',
+		    items: [{
+			iconCls: 'fa fa-lightbulb-o',
+			getTip: function(v, meta, rec) {
+			    if (!rec.data.led_control) {
+				return gettext('Needs ssacli installed on the node');
+			    }
+			    return rec.data.led === 'Blinking'
+				? gettext('Turn the bay LED off')
+				: gettext('Light this bay to identify the disk');
+			},
+			isDisabled: (view, r, c, i, rec) =>
+			    !rec.data.led_control || rec.data.slot === undefined ||
+			    rec.data.slot === null,
+			handler: function(view, rowIndex, colIndex, item, e, rec) {
+			    let panel = view.up('pveHPEiLOStorage');
+			    let lit = rec.get('led') === 'Blinking';
+
+			    Proxmox.Utils.API2Request({
+				url: `/nodes/${panel.nodename}/hpe-ilo-led`,
+				method: 'POST',
+				params: {
+				    slot: String(rec.get('slot')),
+				    drive: rec.get('location'),
+				    state: lit ? 'off' : 'on',
+				},
+				success: function() {
+				    // iLO only reports the new state on its own
+				    // slow cycle, so reflect it immediately.
+				    rec.set('led', lit ? 'Off' : 'Blinking');
+				    rec.commit();
+				},
+				failure: function(response) {
+				    Ext.Msg.alert(gettext('Error'), response.htmlStatus);
+				},
+			    });
+			},
+		    }],
+		},
 	    ],
 	},
     ],
@@ -519,7 +566,13 @@ Ext.define('PVE.hpe.StoragePanel', {
 		lds.push(Ext.apply({ controller: label }, ld));
 	    });
 	    Ext.Array.each(c.drives || [], function(pd) {
-		pds.push(Ext.apply({ controller: label }, pd));
+		// The LED control needs the controller slot and whether ssacli
+		// is present; both live one level up from the drive.
+		pds.push(Ext.apply({
+		    controller: label,
+		    slot: c.slot,
+		    led_control: storage.led_control ? 1 : 0,
+		}, pd));
 	    });
 	});
 
@@ -630,8 +683,11 @@ Ext.define('PVE.hpe.ILOPanel', {
 	}
 
 	if (data.age !== undefined) {
-	    lines.push(`<div style="margin-top:4px;opacity:0.7;">` +
-		Ext.String.format(gettext('Sampled {0}s ago'), data.age) + `</div>`);
+	    let sampled = Ext.String.format(gettext('Sampled {0}s ago'), data.age);
+	    if (data.version) {
+		sampled += ` &middot; pve-hpe-ilo ${Ext.htmlEncode(data.version)}`;
+	    }
+	    lines.push(`<div style="margin-top:4px;opacity:0.7;">${sampled}</div>`);
 	}
 
 	// Section-level failures are worth showing: one dead endpoint on old
@@ -675,6 +731,9 @@ Ext.define('PVE.hpe.ILOPanel', {
 	}
 
 	me.callParent();
+
+	// The storage panel issues its own API calls for the LED control.
+	me.down('#storage').nodename = me.nodename;
 
 	me.updateTask = Ext.TaskManager.newTask({
 	    run: () => me.reload(),

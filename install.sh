@@ -43,10 +43,11 @@ fi
 
 echo "installing Perl modules to $PERL_DIR"
 install -d -m 0755 "$PERL_DIR"
-install -m 0644 "$SRC/perl/PVE/HPEiLO/Config.pm"  "$PERL_DIR/"
-install -m 0644 "$SRC/perl/PVE/HPEiLO/Redfish.pm" "$PERL_DIR/"
-install -m 0644 "$SRC/perl/PVE/HPEiLO/Smart.pm"   "$PERL_DIR/"
-install -m 0644 "$SRC/perl/PVE/HPEiLO/API.pm"     "$PERL_DIR/"
+# Installed as a set rather than named one by one, so adding a module never
+# means remembering to edit this script.
+for module in "$SRC"/perl/PVE/HPEiLO/*.pm; do
+    install -m 0644 "$module" "$PERL_DIR/"
+done
 
 echo "installing executables to /usr/sbin"
 install -m 0755 "$SRC/sbin/pve-hpe-ilo"           /usr/sbin/pve-hpe-ilo

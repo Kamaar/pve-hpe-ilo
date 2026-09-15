@@ -14,6 +14,8 @@ use POSIX qw(strftime);
 use PVE::HPEiLO::Config;
 use PVE::HPEiLO::Redfish;
 use PVE::HPEiLO::Smart;
+use PVE::HPEiLO::Ssacli;
+use PVE::HPEiLO::Version;
 
 my $cache_file = PVE::HPEiLO::Config::CACHE_FILE;
 my $running = 1;
@@ -70,7 +72,8 @@ if ($@) {
 
 my $client = PVE::HPEiLO::Redfish->new(%$cfg);
 
-log_msg('info', "polling iLO at $cfg->{host} every $cfg->{interval}s");
+log_msg('info', "pve-hpe-ilo $PVE::HPEiLO::Version::VERSION polling iLO at"
+    . " $cfg->{host} every $cfg->{interval}s");
 
 my $consecutive_errors = 0;
 
@@ -162,6 +165,11 @@ while ($running) {
 	$sample->{storage} = $last_storage;
     }
     $sample->{storage_age} = time() - $last_storage_ts if $last_storage_ts;
+
+    # Lets the panel hide the locate-LED control when ssacli is not installed,
+    # rather than offering a button that can only fail.
+    $sample->{storage}->{led_control} = PVE::HPEiLO::Ssacli::available() ? 1 : 0
+	if $sample->{storage};
 
     $sample->{interval} = $cfg->{interval};
 

@@ -13,6 +13,8 @@ package PVE::HPEiLO::Smart;
 use strict;
 use warnings;
 
+use PVE::HPEiLO::Exec;
+
 # Debian puts it in /usr/sbin, but do not bet the feature on that.
 my @SMARTCTL_PATHS = qw(
     /usr/sbin/smartctl
@@ -24,13 +26,8 @@ my @SMARTCTL_PATHS = qw(
 my $binary;
 
 sub binary {
-    return $binary if defined $binary;
-    for my $path (@SMARTCTL_PATHS) {
-	next if !-x $path;
-	$binary = $path;
-	return $binary;
-    }
-    return undef;
+    $binary //= PVE::HPEiLO::Exec::find_binary(@SMARTCTL_PATHS);
+    return $binary;
 }
 
 # Physical drive slots to probe on the controller. Scanning stops early at the
@@ -41,41 +38,12 @@ sub available {
     return defined binary();
 }
 
-# Runs a command with a hard timeout, returning its stdout or undef. No shell
-# is involved: every argument is passed through as a separate word.
+# smartctl's exit status is a bitmask and is non-zero for conditions as mild
+# as "a self-test log entry exists", so it says nothing useful about whether
+# the output is usable. Parse it and judge by what came back.
 sub _run {
     my ($timeout, @cmd) = @_;
-
-    my $pid = open(my $fh, '-|');
-    return undef if !defined $pid;
-
-    if (!$pid) {
-	# Child. smartctl is chatty on stderr about drives it cannot identify.
-	open(STDERR, '>', '/dev/null');
-	exec(@cmd);
-	exit 127;
-    }
-
-    my $out;
-    eval {
-	local $SIG{ALRM} = sub { die "timeout\n" };
-	alarm($timeout);
-	local $/;
-	$out = <$fh>;
-	alarm(0);
-    };
-    my $err = $@;
-
-    if ($err) {
-	kill('KILL', $pid);
-	$out = undef;
-    }
-
-    close($fh);
-
-    # smartctl's exit status is a bitmask and is non-zero for conditions as
-    # mild as "a self-test log entry exists", so it says nothing useful about
-    # whether the output is usable. Parse it and judge by what came back.
+    my ($out) = PVE::HPEiLO::Exec::run($timeout, @cmd);
     return $out;
 }
 

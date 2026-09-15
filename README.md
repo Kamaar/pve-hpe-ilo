@@ -7,6 +7,10 @@ iLO over Redfish.
 Built for a **DL380 Gen9 / iLO 4**, and written to also handle iLO 5/6 (Gen10+),
 whose Redfish schema names several fields differently.
 
+![Sensors and fans in the node view](docs/panel-sensors.jpg)
+
+![Smart Array state, with drive temperatures filled in from smartctl](docs/panel-storage.jpg)
+
 ```
 iLO (Redfish) ──► pve-hpe-ilo-poller ──► /run/pve-hpe-ilo/telemetry.json
    HTTPS            systemd, 30s                     │
@@ -78,6 +82,8 @@ pve-hpe-ilo probe --json                   # same, machine readable
 pve-hpe-ilo probe --no-storage             # skip the slow Smart Array walk
 pve-hpe-ilo show                           # the cached sample the GUI reads
 pve-hpe-ilo status                         # one line; exit 2 when unhealthy
+pve-hpe-ilo version                        # package version
+pve-hpe-ilo smart                          # diagnose the smartctl enrichment
 pve-hpe-ilo raw /redfish/v1/Chassis/1/Thermal/   # any Redfish resource
 
 pve-hpe-ilo-patch --check                  # are both hooks still in place?
@@ -146,9 +152,23 @@ later. Configuration on Gen9 needs `ssacli` running on the host.
 Absent fan bays and unpopulated sensors are filtered out: iLO lists them with a
 reading of 0, which would otherwise show up as a dead fan and a frozen CPU.
 
+### Locate LED
+
+The physical drive grid has a lightbulb button per bay that lights the drive's
+locate LED, so eight identical disks can be told apart before one is pulled.
+It needs `ssacli` on the host (HPE's Management Component Pack); when that is
+absent the control is disabled rather than offered and failing.
+
+This is the only thing the package writes to hardware, and it is deliberately
+the smallest write possible. It lives behind its own API path requiring
+`Sys.Modify` on the node, separate from the read-only panel which needs only
+`Sys.Audit`, and the bay address is validated against a strict pattern before
+it is ever passed to `ssacli`.
+
 ## What this cannot do
 
-This package is **read-only**, for two separate reasons.
+Apart from the locate LED above, this package is **read-only**, for two
+separate reasons.
 
 **Fan control.** On HPE hardware the BMC owns the fan curve and exposes no
 supported way to set it. The fan mods circulating for Gen8/Gen9 rely on
