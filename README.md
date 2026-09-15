@@ -9,7 +9,7 @@ whose Redfish schema names several fields differently.
 
 ![Sensors and fans in the node view](docs/panel-sensors.jpg)
 
-![Smart Array state, with drive temperatures filled in from smartctl](docs/panel-storage.jpg)
+![Smart Array state, with drive temperatures and run time filled in from smartctl, and a locate LED per bay](docs/panel-storage.jpg)
 
 ```
 iLO (Redfish) ──► pve-hpe-ilo-poller ──► /run/pve-hpe-ilo/telemetry.json
