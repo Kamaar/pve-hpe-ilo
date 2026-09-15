@@ -100,17 +100,20 @@ git clone https://github.com/Kamaar/pve-hpe-ilo.git /root/pve-hpe-ilo
 
 Updating later is then one line, covered in section 10.
 
-> **Chain the commands with `&&`.** If that directory already holds an older
-> copy, `git clone` refuses with *destination path already exists* — and an
-> `install.sh` run on the next line goes ahead anyway, installing the old tree
-> over a working node. Every step prints the version it is installing, so check
-> that line rather than assuming. To start from a stale directory:
+> **If that directory already exists**, `git clone` refuses with *destination
+> path already exists* — and an `install.sh` typed on the next line then runs
+> from whatever was already there, quietly installing an old tree over a
+> working node. Remove it first, and chain with `&&` so nothing runs after a
+> failure:
 >
 > ```sh
-> mv /root/pve-hpe-ilo /root/pve-hpe-ilo.old
-> git clone https://github.com/Kamaar/pve-hpe-ilo.git /root/pve-hpe-ilo && \
->   cd /root/pve-hpe-ilo && ./install.sh
+> cd /root && rm -rf pve-hpe-ilo && \
+>   git clone https://github.com/Kamaar/pve-hpe-ilo.git pve-hpe-ilo && \
+>   cd pve-hpe-ilo && ./install.sh
 > ```
+>
+> Nothing of yours lives in that directory — the configuration is in
+> `/etc/pve-hpe-ilo/` — so deleting it is safe.
 
 <details>
 <summary>If the node has no internet access</summary>
@@ -352,6 +355,24 @@ it distinguishes *unconfigured*, *stale* and *error*. Then:
 journalctl -u pve-hpe-ilo -n 50 --no-pager
 ```
 
+**Did something that used to work stop working?** Suspect a half-updated
+install before suspecting a bug. Files are replaced individually, so a node can
+end up running a new CLI against an old poller, and the result looks healthy.
+These four lines catch it:
+
+```sh
+pve-hpe-ilo version                        # the CLI and Version.pm
+journalctl -u pve-hpe-ilo -n 20 --no-pager | grep 'polling iLO'
+pve-hpe-ilo show --json | grep -o '"led_control"[^,}]*'
+ls -l /usr/sbin/pve-hpe-ilo /usr/sbin/pve-hpe-ilo-poller
+```
+
+The poller logs its own version at startup, so that line and `pve-hpe-ilo
+version` must agree — they come from two separate files on disk. Timestamps
+that differ between the two executables mean the same thing. The cure is always
+the clean reinstall in section 2, never copying the one file you think is
+missing.
+
 ---
 
 ## 9. After a Proxmox upgrade
@@ -387,6 +408,24 @@ you have to keep current, keeps your existing `config.json`, reapplies the two
 hooks, restarts the poller, and restarts `pvedaemon` and `pveproxy` — the last
 one matters, because both cache what they have loaded and would otherwise keep
 serving the previous version.
+
+**Two lines in the output tell you it worked.** Check them rather than assuming:
+
+```
+installing pve-hpe-ilo 1.0.0 from /root/pve-hpe-ilo
+restarting pvedaemon and pveproxy
+```
+
+If `git pull` says *not a git repository*, that directory is a manual copy from
+before. Replace it with a clone — the block in section 2 — rather than copying
+files over it again.
+
+**Never update by copying individual files.** It works until the day you miss
+one, and then it does not fail: it produces a node running a new panel against
+an old poller, which looks healthy and quietly lacks whatever the missing file
+provided. Nothing on disk announces its own version, so there is no way to spot
+it by looking. If you must transfer by hand — a node without internet access —
+copy the whole tree and run `install.sh`, never a subset.
 
 Then hard-refresh the browser (`Ctrl+Shift+R`). The panel JavaScript is cached
 under the *pve-manager* version string, which does not change when this package
