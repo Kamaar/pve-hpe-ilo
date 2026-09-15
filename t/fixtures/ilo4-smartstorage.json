@@ -1,0 +1,124 @@
+{
+  "_comment": "Recorded shape of the iLO 4 SmartStorage tree on a DL380 Gen9 with a P440ar. Keyed by request URI, as the mock client in normalize.t expects.",
+
+  "/redfish/v1/Systems/1/SmartStorage/": {
+    "@odata.type": "#HpSmartStorage.1.0.0.HpSmartStorage",
+    "Id": "SmartStorage",
+    "Name": "Smart Storage",
+    "Status": { "Health": "OK", "HealthRollup": "Warning", "State": "Enabled" },
+    "Links": {
+      "ArrayControllers": { "@odata.id": "/redfish/v1/Systems/1/SmartStorage/ArrayControllers/" }
+    }
+  },
+
+  "/redfish/v1/Systems/1/SmartStorage/ArrayControllers/": {
+    "@odata.type": "#HpSmartStorageArrayControllerCollection.HpSmartStorageArrayControllerCollection",
+    "Members@odata.count": 1,
+    "Members": [
+      { "@odata.id": "/redfish/v1/Systems/1/SmartStorage/ArrayControllers/0/" }
+    ]
+  },
+
+  "/redfish/v1/Systems/1/SmartStorage/ArrayControllers/0/": {
+    "@odata.type": "#HpSmartStorageArrayController.1.0.0.HpSmartStorageArrayController",
+    "AdapterType": "SmartArray",
+    "BackupPowerSourceStatus": "PresentAndCharged",
+    "CacheMemorySizeMiB": 2048,
+    "CurrentOperatingMode": "RAID",
+    "EncryptionEnabled": false,
+    "FirmwareVersion": { "Current": { "VersionString": "6.88" } },
+    "Id": "0",
+    "Location": "Slot 0",
+    "LocationFormat": "PCISlot",
+    "LogicalDriveCount": 2,
+    "Model": "Smart Array P440ar",
+    "PhysicalDriveCount": 4,
+    "RebuildPriority": "Medium",
+    "SerialNumber": "PDNNK0BRH8V7GG",
+    "SparePhysicalDriveCount": 0,
+    "Status": { "Health": "Warning", "State": "Enabled" },
+    "UnassignedPhysicalDriveCount": 0,
+    "Links": {
+      "LogicalDrives": { "@odata.id": "/redfish/v1/Systems/1/SmartStorage/ArrayControllers/0/LogicalDrives/" },
+      "DiskDrives": { "@odata.id": "/redfish/v1/Systems/1/SmartStorage/ArrayControllers/0/DiskDrives/" }
+    }
+  },
+
+  "/redfish/v1/Systems/1/SmartStorage/ArrayControllers/0/LogicalDrives/": {
+    "Members": [
+      { "@odata.id": "/redfish/v1/Systems/1/SmartStorage/ArrayControllers/0/LogicalDrives/1/" },
+      { "@odata.id": "/redfish/v1/Systems/1/SmartStorage/ArrayControllers/0/LogicalDrives/2/" }
+    ]
+  },
+
+  "/redfish/v1/Systems/1/SmartStorage/ArrayControllers/0/LogicalDrives/1/": {
+    "CapacityMiB": 571340,
+    "DriveAccessName": "/dev/sda",
+    "Id": "1",
+    "LogicalDriveName": "01",
+    "LogicalDriveNumber": 1,
+    "LogicalDriveType": "Data",
+    "Raid": "1",
+    "Status": { "Health": "OK", "State": "Enabled" },
+    "StripSizeBytes": 262144,
+    "VolumeUniqueIdentifier": "600508B1001C1234"
+  },
+
+  "/redfish/v1/Systems/1/SmartStorage/ArrayControllers/0/LogicalDrives/2/": {
+    "CapacityMiB": 1905868,
+    "DriveAccessName": "/dev/sdb",
+    "Id": "2",
+    "LogicalDriveName": "02",
+    "LogicalDriveNumber": 2,
+    "LogicalDriveType": "Data",
+    "Raid": "5",
+    "RebuildCompletionPercentage": 37,
+    "Status": { "Health": "Warning", "State": "Enabled" },
+    "StripSizeBytes": 262144
+  },
+
+  "/redfish/v1/Systems/1/SmartStorage/ArrayControllers/0/DiskDrives/": {
+    "Members": [
+      { "@odata.id": "/redfish/v1/Systems/1/SmartStorage/ArrayControllers/0/DiskDrives/0/" },
+      { "@odata.id": "/redfish/v1/Systems/1/SmartStorage/ArrayControllers/0/DiskDrives/1/" }
+    ]
+  },
+
+  "/redfish/v1/Systems/1/SmartStorage/ArrayControllers/0/DiskDrives/0/": {
+    "CapacityGB": 600,
+    "CapacityMiB": 572325,
+    "CurrentTemperatureCelsius": 34,
+    "FirmwareVersion": { "Current": { "VersionString": "HPD6" } },
+    "Id": "0",
+    "IndicatorLED": "Off",
+    "InterfaceType": "SAS",
+    "Location": "1I:1:1",
+    "LocationFormat": "ControllerPort:Box:Bay",
+    "MaximumTemperatureCelsius": 60,
+    "MediaType": "HDD",
+    "Model": "EG0600FCSPN",
+    "PowerOnHours": 41233,
+    "RotationalSpeedRpm": 10000,
+    "SerialNumber": "KZG1XXXX",
+    "Status": { "Health": "OK", "State": "Enabled" }
+  },
+
+  "/redfish/v1/Systems/1/SmartStorage/ArrayControllers/0/DiskDrives/1/": {
+    "_comment": "A P440ar often passes no drive temperature or run time out of band, sending 0 instead of omitting the field.",
+    "CapacityGB": 600,
+    "CurrentTemperatureCelsius": 0,
+    "FirmwareVersion": { "Current": { "VersionString": "HPD6" } },
+    "Id": "1",
+    "IndicatorLED": "Blinking",
+    "InterfaceType": "SAS",
+    "Location": "1I:1:2",
+    "MaximumTemperatureCelsius": 60,
+    "MediaType": "HDD",
+    "Model": "EG0600FCSPN",
+    "PowerOnHours": 0,
+    "RotationalSpeedRpm": 10000,
+    "SSDEnduranceUtilizationPercentage": null,
+    "SerialNumber": "KZG2XXXX",
+    "Status": { "Health": "Critical", "State": "Enabled" }
+  }
+}

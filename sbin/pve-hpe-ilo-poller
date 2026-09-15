@@ -1,0 +1,192 @@
+#!/usr/bin/perl
+
+# Samples HPE iLO over Redfish on a fixed interval and writes the result to a
+# cache file. Kept as a long-running daemon rather than a systemd timer so the
+# HTTPS connection to iLO can be reused -- iLO 4 negotiates TLS slowly and
+# tolerates few concurrent sessions.
+
+use strict;
+use warnings;
+
+use JSON;
+use POSIX qw(strftime);
+
+use PVE::HPEiLO::Config;
+use PVE::HPEiLO::Redfish;
+use PVE::HPEiLO::Smart;
+
+my $cache_file = PVE::HPEiLO::Config::CACHE_FILE;
+my $running = 1;
+
+$SIG{TERM} = $SIG{INT} = sub { $running = 0; };
+
+sub log_msg {
+    my ($level, $msg) = @_;
+    # systemd picks up the <N> prefix and maps it to a journal priority.
+    my $prio = { err => 3, warning => 4, info => 6 }->{$level} // 6;
+    print STDERR "<$prio>$msg\n";
+}
+
+sub write_cache {
+    my ($data) = @_;
+
+    my $dir = $cache_file;
+    $dir =~ s{/[^/]+$}{};
+    if (!-d $dir) {
+	mkdir($dir, 0750) or die "cannot create $dir: $!\n";
+    }
+
+    my $tmp = "$cache_file.tmp.$$";
+    open(my $fh, '>', $tmp) or die "cannot write $tmp: $!\n";
+    chmod(0600, $tmp);
+    print $fh encode_json($data);
+    close($fh) or die "cannot close $tmp: $!\n";
+
+    # Atomic replace: the API handler never sees a half-written sample.
+    rename($tmp, $cache_file) or do {
+	unlink($tmp);
+	die "cannot rename $tmp to $cache_file: $!\n";
+    };
+}
+
+my $cfg = eval { PVE::HPEiLO::Config::load() };
+if ($@) {
+    my $err = $@;
+    chomp $err;
+    log_msg('err', "configuration error: $err");
+    # Leave a sample behind so the GUI explains itself instead of showing
+    # an empty panel.
+    eval {
+	write_cache({
+	    timestamp => time(),
+	    status => 'unconfigured',
+	    error => $err,
+	    temperatures => [],
+	    fans => [],
+	});
+    };
+    exit 1;
+}
+
+my $client = PVE::HPEiLO::Redfish->new(%$cfg);
+
+log_msg('info', "polling iLO at $cfg->{host} every $cfg->{interval}s");
+
+my $consecutive_errors = 0;
+
+# The Smart Array walk is kept out of the normal cycle and its last good
+# result is carried forward, so the panel always shows RAID state even on the
+# polls that did not fetch it.
+my $last_storage;
+my $last_storage_ts = 0;   # when the data was obtained, for reporting its age
+my $next_storage_try = 0;  # when to attempt again, success or failure
+
+# Discovering the scsi-generic node costs a smartctl call per /dev/sg*, so it
+# is done once and reused.
+my $smart_device;
+my $smart_warned = 0;
+
+while ($running) {
+    my $start = time();
+
+    my $want_storage = $cfg->{storage} && $start >= $next_storage_try;
+
+    my $sample = eval { $client->collect(storage => $want_storage) };
+    if ($@) {
+	my $err = $@;
+	chomp $err;
+	$consecutive_errors++;
+	log_msg('err', "poll failed ($consecutive_errors): $err");
+	$sample = {
+	    timestamp => time(),
+	    status => 'error',
+	    error => $err,
+	    host => $cfg->{host},
+	    temperatures => [],
+	    fans => [],
+	};
+    } else {
+	if ($consecutive_errors) {
+	    log_msg('info', "iLO reachable again after $consecutive_errors failed polls");
+	    $consecutive_errors = 0;
+	}
+	# Surface partial failures (one unsupported endpoint) without
+	# downgrading an otherwise usable sample.
+	my @failed = sort keys %{ $sample->{errors} // {} };
+	log_msg('warning', "partial sample, sections failed: " . join(', ', @failed))
+	    if @failed;
+    }
+
+    # Whether it worked or not, do not retry on the fast cycle.
+    $next_storage_try = time() + $cfg->{storage_interval} if $want_storage;
+
+    # Only worth doing on a fresh walk: the carried-forward copy was already
+    # enriched when it was collected.
+    if ($cfg->{smart} && $sample->{storage}) {
+	my $filled = eval {
+	    my $expect = 0;
+	    $expect += scalar @{ $_->{drives} // [] }
+		for @{ $sample->{storage}->{controllers} // [] };
+
+	    my $smart = PVE::HPEiLO::Smart::collect(
+		timeout => $cfg->{smart_timeout},
+		expect  => $expect,
+		device  => $smart_device,
+	    );
+
+	    if ($smart) {
+		# Remember the node so later cycles skip rediscovering it.
+		$smart_device = $smart->{device};
+		PVE::HPEiLO::Smart::enrich($sample->{storage}, $smart);
+	    } else {
+		0;
+	    }
+	};
+	if ($@) {
+	    my $err = $@;
+	    chomp $err;
+	    log_msg('warning', "smartctl enrichment failed: $err");
+	} elsif (!$filled && !$smart_warned) {
+	    log_msg('info', 'smartctl added nothing; drive temperatures stay as'
+		. ' iLO reported them');
+	    $smart_warned = 1;
+	}
+    }
+
+    if ($sample->{storage}) {
+	$last_storage = $sample->{storage};
+	$last_storage_ts = time();
+    } elsif ($last_storage) {
+	# Reuse the previous walk, and report how old it is rather than
+	# passing it off as current.
+	$sample->{storage} = $last_storage;
+    }
+    $sample->{storage_age} = time() - $last_storage_ts if $last_storage_ts;
+
+    $sample->{interval} = $cfg->{interval};
+
+    eval { write_cache($sample) };
+    if ($@) {
+	my $err = $@;
+	chomp $err;
+	log_msg('err', "cannot update cache: $err");
+    }
+
+    last if !$running;
+
+    # Back off when iLO is down: a rebooting BMC is unreachable for minutes,
+    # and retrying every 30s the whole time is pointless noise in the journal.
+    my $interval = $cfg->{interval};
+    $interval *= 4 if $consecutive_errors >= 3;
+    $interval = 300 if $interval > 300;
+
+    my $elapsed = time() - $start;
+    my $wait = $interval - $elapsed;
+    $wait = 1 if $wait < 1;
+
+    # sleep() returns early on SIGTERM, which is what lets shutdown be prompt.
+    sleep($wait);
+}
+
+log_msg('info', 'shutting down');
+exit 0;

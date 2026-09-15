@@ -1,0 +1,28 @@
+{
+  "_comment": "Install to /etc/pve-hpe-ilo/config.json with mode 0600, root:root.",
+
+  "host": "192.168.1.50",
+  "username": "pve-monitor",
+  "password": "CHANGE-ME",
+
+  "_comment_insecure": "iLO ships a self-signed certificate. Set to false once you have installed a trusted one.",
+  "insecure": true,
+
+  "_comment_interval": "Seconds between polls. iLO 4 takes 1-3s per Redfish call; below 10 the poller clamps.",
+  "interval": 30,
+
+  "timeout": 15,
+  "port": 443,
+
+  "_comment_storage": "Smart Array monitoring. The walk costs one request per physical drive, so it runs on its own slower cycle; set storage to false to skip it entirely.",
+  "storage": true,
+  "storage_interval": 300,
+
+  "_comment_smart": "Fill drive temperature and run time from smartctl when iLO leaves them empty, which is what happens with third-party disks in HP carriers. Runs on the storage cycle.",
+  "smart": true,
+  "smart_timeout": 10,
+
+  "_comment_ids": "Chassis and system ids. '1' is correct for every single-node ProLiant.",
+  "chassis": "1",
+  "system": "1"
+}

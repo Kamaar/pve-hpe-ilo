@@ -1,0 +1,35 @@
+[Unit]
+Description=HPE iLO telemetry poller for Proxmox VE
+Documentation=man:pve-hpe-ilo(8)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/pve-hpe-ilo-poller
+Restart=always
+RestartSec=30
+
+# Creates and owns /run/pve-hpe-ilo, removing it again on stop.
+RuntimeDirectory=pve-hpe-ilo
+RuntimeDirectoryMode=0750
+
+# Runs as root only to read the 0600 credentials file; it needs nothing else
+# from the system, so take the rest away.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

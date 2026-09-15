@@ -1,0 +1,83 @@
+{
+  "@odata.type": "#Thermal.v1_1_0.Thermal",
+  "Id": "Thermal",
+  "Name": "Thermal",
+  "Fans": [
+    {
+      "CurrentReading": 23,
+      "FanName": "Fan 1",
+      "Oem": { "Hp": { "Location": "System", "HotPluggable": true } },
+      "Status": { "Health": "OK", "State": "Enabled" },
+      "Units": "Percent"
+    },
+    {
+      "CurrentReading": 23,
+      "FanName": "Fan 2",
+      "Status": { "Health": "OK", "State": "Enabled" },
+      "Units": "Percent"
+    },
+    {
+      "CurrentReading": 0,
+      "FanName": "Fan 6",
+      "Status": { "State": "Absent" },
+      "Units": "Percent"
+    }
+  ],
+  "Temperatures": [
+    {
+      "CurrentReading": 21,
+      "Name": "01-Inlet Ambient",
+      "Number": 1,
+      "PhysicalContext": "Intake",
+      "ReadingCelsius": 21,
+      "Status": { "Health": "OK", "State": "Enabled" },
+      "UpperThresholdCritical": 46,
+      "UpperThresholdFatal": null,
+      "Units": "Celsius"
+    },
+    {
+      "CurrentReading": 40,
+      "Name": "02-CPU 1",
+      "Number": 2,
+      "PhysicalContext": "CPU",
+      "ReadingCelsius": 40,
+      "Status": { "Health": "OK", "State": "Enabled" },
+      "UpperThresholdCritical": 70,
+      "UpperThresholdNonCritical": 70,
+      "UpperThresholdFatal": 0,
+      "Units": "Celsius"
+    },
+    {
+      "CurrentReading": 0,
+      "Name": "03-CPU 2",
+      "Number": 3,
+      "PhysicalContext": "CPU",
+      "ReadingCelsius": 0,
+      "Status": { "State": "Absent" },
+      "UpperThresholdCritical": 70,
+      "Units": "Celsius"
+    },
+    {
+      "CurrentReading": 0,
+      "Name": "14-Chipset",
+      "Number": 14,
+      "PhysicalContext": "SystemBoard",
+      "ReadingCelsius": 0,
+      "Status": { "Health": "OK", "State": "Enabled" },
+      "UpperThresholdCritical": 105,
+      "Units": "Celsius"
+    },
+    {
+      "CurrentReading": 31,
+      "Name": "11-PS 1 Inlet",
+      "Number": 11,
+      "PhysicalContext": "PowerSupply",
+      "ReadingCelsius": 31,
+      "Status": { "Health": "OK", "State": "Enabled" },
+      "UpperThresholdCritical": 0,
+      "UpperThresholdNonCritical": 0,
+      "UpperThresholdFatal": 0,
+      "Units": "Celsius"
+    }
+  ]
+}

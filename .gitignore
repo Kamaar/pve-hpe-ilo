@@ -1,0 +1,11 @@
+# Editor and OS noise
+*.swp
+*~
+.DS_Store
+
+# Backups made by the patcher when run outside a node
+backup/
+*.orig
+
+# Nothing here is built, but keep stray local configs out
+config.json

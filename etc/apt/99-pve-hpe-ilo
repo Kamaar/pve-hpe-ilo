@@ -1,0 +1,12 @@
+// Re-applies the pve-hpe-ilo hooks after any apt run.
+//
+// Upgrading pve-manager replaces index.html.tpl, and upgrading libpve-access-
+// control replaces PVE/API2/Nodes.pm; either one silently removes the hardware
+// tab. The patcher is idempotent and does nothing when both hooks are intact,
+// so running it on every apt invocation is cheap.
+//
+// '|| true' keeps a failure here from turning into a failed package operation.
+
+DPkg::Post-Invoke {
+    "if [ -x /usr/sbin/pve-hpe-ilo-patch ]; then /usr/sbin/pve-hpe-ilo-patch --quiet || true; fi";
+};

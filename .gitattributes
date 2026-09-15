@@ -1,0 +1,4 @@
+# Shell scripts, Perl modules and the systemd unit all run on Linux.
+# Checking out with CRLF would break every shebang.
+* text=auto eol=lf
+*.json text eol=lf

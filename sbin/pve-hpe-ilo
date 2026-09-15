@@ -1,0 +1,242 @@
+#!/usr/bin/perl
+
+# Command line companion to the GUI panel. 'probe' is the first thing to run
+# on a new machine: iLO 4 names its sensors differently from iLO 5, and 'raw'
+# shows exactly what a given firmware returns before trusting the panel.
+
+use strict;
+use warnings;
+
+use JSON;
+use POSIX qw(strftime);
+
+use PVE::HPEiLO::Config;
+use PVE::HPEiLO::Redfish;
+use PVE::HPEiLO::Smart;
+
+my $usage = <<"EOF";
+usage: pve-hpe-ilo <command> [options]
+
+commands:
+  probe            connect to iLO and print a formatted sample
+  show             print the cached sample the GUI panel reads
+  status           one-line health summary (suitable for scripts)
+  raw <path>       pretty-print any Redfish resource, e.g.
+                   raw /redfish/v1/Chassis/1/Thermal/
+
+options:
+  --config <file>  alternative config file
+  --json           machine readable output (probe, show)
+  --no-storage     skip the Smart Array walk (probe); much faster on iLO 4,
+                   which needs one request per physical drive
+EOF
+
+my $cmd = shift(@ARGV) // '';
+my $path;
+my %opt = (config => undef, json => 0, storage => 1);
+
+while (@ARGV) {
+    my $arg = shift(@ARGV);
+    if ($arg eq '--config') {
+	$opt{config} = shift(@ARGV) // die "--config needs a value\n";
+    } elsif ($arg eq '--json') {
+	$opt{json} = 1;
+    } elsif ($arg eq '--no-storage') {
+	$opt{storage} = 0;
+    } elsif ($arg =~ /^-/) {
+	die "unknown option '$arg'\n\n$usage";
+    } else {
+	$path = $arg;
+    }
+}
+
+sub client {
+    my $cfg = PVE::HPEiLO::Config::load($opt{config});
+    return (PVE::HPEiLO::Redfish->new(%$cfg), $cfg);
+}
+
+sub read_cache {
+    my $file = PVE::HPEiLO::Config::CACHE_FILE;
+
+    if (!-e $file) {
+	# Overwhelmingly this means the poller started seconds ago: the first
+	# sample includes the Smart Array walk, which takes a while on iLO 4.
+	my $hint = system('systemctl is-active --quiet pve-hpe-ilo') == 0
+	    ? "the poller is running but has not completed its first sample yet"
+	    : "the poller is not running - systemctl start pve-hpe-ilo";
+	die "no sample at $file: $hint\n";
+    }
+
+    open(my $fh, '<', $file) or die "cannot read $file: $!\n";
+    local $/;
+    my $raw = <$fh>;
+    close($fh);
+    my $data = decode_json($raw);
+    return $data;
+}
+
+sub fmt_num {
+    my ($v, $unit) = @_;
+    return '-' if !defined $v;
+    return sprintf('%g%s', $v, $unit // '');
+}
+
+sub print_sample {
+    my ($s) = @_;
+
+    if ($opt{json}) {
+	print JSON->new->canonical->pretty->encode($s);
+	return;
+    }
+
+    my $when = defined $s->{timestamp}
+	? strftime('%Y-%m-%d %H:%M:%S', localtime($s->{timestamp}))
+	: 'unknown';
+
+    printf("host:   %s\n", $s->{host} // '-');
+    printf("status: %s%s\n", $s->{status} // '-',
+	defined $s->{error} ? " ($s->{error})" : '');
+    printf("sample: %s\n", $when);
+
+    if (my $srv = $s->{server}) {
+	printf("server: %s  bios %s  sn %s\n",
+	    $srv->{model} // '-', $srv->{bios} // '-', $srv->{serial} // '-');
+    }
+    if (my $ilo = $s->{ilo}) {
+	printf("ilo:    %s %s (%s api)\n",
+	    $ilo->{type} // 'iLO', $ilo->{firmware} // '-', $ilo->{api} // '-');
+    }
+
+    if (my $h = $s->{health}) {
+	print "\nhealth:\n";
+	for my $k (sort keys %$h) {
+	    printf("  %-22s %s\n", $k, $h->{$k});
+	}
+    }
+
+    if (@{ $s->{temperatures} // [] }) {
+	print "\ntemperatures:\n";
+	for my $t (@{ $s->{temperatures} }) {
+	    printf("  %-30s %5s  warn %-6s crit %-6s %s\n",
+		$t->{name}, fmt_num($t->{celsius}, 'C'),
+		fmt_num($t->{warning}, 'C'), fmt_num($t->{critical}, 'C'),
+		$t->{health} // '');
+	}
+    }
+
+    if (@{ $s->{fans} // [] }) {
+	print "\nfans:\n";
+	for my $f (@{ $s->{fans} }) {
+	    printf("  %-30s %5s %s\n",
+		$f->{name}, fmt_num($f->{reading}),
+		$f->{units} // '');
+	}
+    }
+
+    if (my $p = $s->{power}) {
+	print "\npower:\n";
+	printf("  %-30s %s\n", 'consumed', fmt_num($p->{consumed_watts}, 'W'));
+	printf("  %-30s %s\n", 'capacity', fmt_num($p->{capacity_watts}, 'W'));
+	printf("  %-30s avg %s  min %s  max %s\n", 'metrics',
+	    fmt_num($p->{average_watts}, 'W'), fmt_num($p->{min_watts}, 'W'),
+	    fmt_num($p->{max_watts}, 'W'));
+	for my $ps (@{ $p->{supplies} // [] }) {
+	    printf("  %-30s %6s  %s  %s\n", $ps->{name},
+		fmt_num($ps->{output_watts}, 'W'),
+		fmt_num($ps->{input_voltage}, 'V'),
+		$ps->{health} // '');
+	}
+    }
+
+    if (my $storage = $s->{storage}) {
+	printf("\nstorage: %s%s\n", $storage->{health} // '-',
+	    defined $s->{storage_age} ? " (sampled ${\ $s->{storage_age} }s ago)" : '');
+
+	for my $c (@{ $storage->{controllers} // [] }) {
+	    printf("  %s in %s -- %s, fw %s, cache %s, backup power %s\n",
+		$c->{model} // 'controller', $c->{location} // '?',
+		$c->{health} // '-', $c->{firmware} // '-',
+		defined $c->{cache_mib} ? "$c->{cache_mib} MiB" : '-',
+		$c->{backup_power} // '-');
+	    printf("    mode %s, rebuild priority %s, %s spare(s), %s unassigned\n",
+		$c->{mode} // '-', $c->{rebuild_priority} // '-',
+		$c->{spares} // 0, $c->{unassigned} // 0);
+
+	    for my $ld (@{ $c->{logical_drives} // [] }) {
+		my $size = defined $ld->{capacity_mib}
+		    ? sprintf('%.1f TiB', $ld->{capacity_mib} / 1024 / 1024) : '-';
+		printf("    ld %-3s %-8s %-10s %-10s %s%s\n",
+		    $ld->{number} // '?', "RAID $ld->{raid}", $size,
+		    $ld->{device} // '-', $ld->{health} // '-',
+		    defined $ld->{operation}
+			? "  [$ld->{operation} $ld->{progress}%]" : '');
+	    }
+
+	    for my $pd (@{ $c->{drives} // [] }) {
+		printf("    pd %-12s %-6s %-5s %-24s %-5s %-6s %s\n",
+		    $pd->{location} // '?',
+		    defined $pd->{capacity_gb} ? "$pd->{capacity_gb}GB" : '-',
+		    $pd->{media} // '-', $pd->{model} // '-',
+		    defined $pd->{celsius} ? "$pd->{celsius}C" : '-',
+		    defined $pd->{power_hours} ? "$pd->{power_hours}h" : '-',
+		    $pd->{health} // '-');
+	    }
+
+	    printf("    (%d more drives not shown)\n", $c->{truncated})
+		if $c->{truncated};
+	}
+    }
+
+    if (my $err = $s->{errors}) {
+	my @keys = sort keys %$err;
+	if (@keys) {
+	    print "\nsection errors:\n";
+	    printf("  %-10s %s\n", $_, $err->{$_}) for @keys;
+	}
+    }
+}
+
+if ($cmd eq 'probe') {
+    my ($client, $cfg) = client();
+    my $sample = $client->collect(storage => $opt{storage});
+
+    # Same enrichment the poller applies, so probe shows what the panel shows.
+    if ($cfg->{smart} && $sample->{storage}) {
+	eval {
+	    my $smart = PVE::HPEiLO::Smart::collect(timeout => $cfg->{smart_timeout});
+	    PVE::HPEiLO::Smart::enrich($sample->{storage}, $smart) if $smart;
+	};
+	warn "smartctl enrichment failed: $@" if $@;
+    }
+
+    print_sample($sample);
+} elsif ($cmd eq 'show') {
+    print_sample(read_cache());
+} elsif ($cmd eq 'status') {
+    my $s = eval { read_cache() };
+    if ($@) {
+	print "unknown: no cached sample\n";
+	exit 3;
+    }
+    my $age = defined $s->{timestamp} ? time() - $s->{timestamp} : -1;
+    my $health = $s->{health}->{system} // 'Unknown';
+    my $storage = $s->{storage} ? ($s->{storage}->{health} // 'Unknown') : '-';
+    my $watts = $s->{power}->{consumed_watts};
+    printf("%s health=%s storage=%s power=%s age=%ss\n",
+	$s->{status} // 'error', $health, $storage, fmt_num($watts, 'W'), $age);
+
+    my $bad = ($s->{status} // '') ne 'ok' || $health ne 'OK';
+    # '-' means storage polling is off, which is not a fault.
+    $bad = 1 if $storage ne 'OK' && $storage ne '-';
+    exit($bad ? 2 : 0);
+} elsif ($cmd eq 'raw') {
+    die "raw needs a resource path\n\n$usage" if !defined $path;
+    my ($client) = client();
+    my $data = $client->get($path);
+    print JSON->new->canonical->pretty->encode($data);
+} else {
+    print $usage;
+    exit($cmd eq '' || $cmd eq 'help' || $cmd eq '--help' ? 0 : 1);
+}
+
+exit 0;

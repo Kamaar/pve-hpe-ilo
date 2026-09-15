@@ -1,0 +1,38 @@
+{
+  "@odata.type": "#Thermal.v1_6_0.Thermal",
+  "Id": "Thermal",
+  "Name": "Thermal",
+  "Fans": [
+    {
+      "Name": "Fan 1",
+      "Reading": 18,
+      "ReadingUnits": "Percent",
+      "Status": { "Health": "OK", "State": "Enabled" }
+    },
+    {
+      "Name": "Fan 2",
+      "Reading": 18,
+      "ReadingUnits": "Percent",
+      "Status": { "Health": "OK", "State": "Enabled" }
+    }
+  ],
+  "Temperatures": [
+    {
+      "Name": "01-Inlet Ambient",
+      "PhysicalContext": "Intake",
+      "ReadingCelsius": 19,
+      "SensorNumber": 1,
+      "Status": { "Health": "OK", "State": "Enabled" },
+      "UpperThresholdCritical": 46,
+      "UpperThresholdNonCritical": 42
+    },
+    {
+      "Name": "02-CPU 1",
+      "PhysicalContext": "CPU",
+      "ReadingCelsius": 38,
+      "SensorNumber": 2,
+      "Status": { "Health": "OK", "State": "Enabled" },
+      "UpperThresholdCritical": 70
+    }
+  ]
+}

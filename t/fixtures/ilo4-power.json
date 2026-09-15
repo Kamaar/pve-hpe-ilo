@@ -1,0 +1,45 @@
+{
+  "@odata.type": "#Power.v1_1_0.Power",
+  "Id": "Power",
+  "Name": "PowerMetrics",
+  "PowerCapacityWatts": 1600,
+  "PowerConsumedWatts": 212,
+  "PowerControl": [
+    {
+      "PowerCapacityWatts": 1600,
+      "PowerConsumedWatts": 212,
+      "PowerMetrics": {
+        "AverageConsumedWatts": 208,
+        "IntervalInMin": 20,
+        "MaxConsumedWatts": 336,
+        "MinConsumedWatts": 190
+      }
+    }
+  ],
+  "PowerSupplies": [
+    {
+      "LastPowerOutputWatts": 108,
+      "LineInputVoltage": 231,
+      "LineInputVoltageType": "ACHighLine",
+      "Model": "720478-B21",
+      "Name": "HpServerPowerSupply",
+      "Oem": { "Hp": { "BayNumber": 1 } },
+      "PowerCapacityWatts": 800,
+      "SerialNumber": "5DXXXXXXXXXXXX",
+      "Status": { "Health": "OK", "State": "Enabled" }
+    },
+    {
+      "LastPowerOutputWatts": 104,
+      "LineInputVoltage": 230,
+      "Model": "720478-B21",
+      "Name": "HpServerPowerSupply",
+      "Oem": { "Hp": { "BayNumber": 2 } },
+      "PowerCapacityWatts": 800,
+      "Status": { "Health": "OK", "State": "Enabled" }
+    },
+    {
+      "Name": "HpeServerPowerSupply",
+      "Status": { "State": "Absent" }
+    }
+  ]
+}
