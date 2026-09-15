@@ -111,6 +111,15 @@ sub _parse {
 	$out->{power_hours} = $1 + 0;
     }
 
+    # Sectors the drive has remapped since it left the factory. On a spinning
+    # disk this is the closest thing to a wear indicator, and a count that
+    # starts climbing is the earliest warning of a failure there is.
+    if ($text =~ /^Elements in grown defect list:\s*(\d+)/m) {
+	$out->{grown_defects} = $1 + 0;
+    } elsif ($text =~ /^\s*5\s+Reallocated_Sector_Ct\s+\S+\s+\d+\s+\d+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\d+)/m) {
+	$out->{grown_defects} = $1 + 0;
+    }
+
     return undef if !defined $out->{serial};
     return $out;
 }
@@ -186,7 +195,7 @@ sub enrich {
 	    my $info = $smart->{by_serial}->{$serial};
 	    next if !$info;
 
-	    for my $field (qw(celsius power_hours)) {
+	    for my $field (qw(celsius power_hours grown_defects)) {
 		next if defined $drive->{$field};
 		next if !defined $info->{$field};
 		$drive->{$field} = $info->{$field};

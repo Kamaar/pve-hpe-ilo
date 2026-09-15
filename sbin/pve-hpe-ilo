@@ -175,12 +175,13 @@ sub print_sample {
 	    }
 
 	    for my $pd (@{ $c->{drives} // [] }) {
-		printf("    pd %-12s %-6s %-5s %-24s %-5s %-6s %s\n",
+		printf("    pd %-12s %-6s %-5s %-24s %-5s %-8s %-8s %s\n",
 		    $pd->{location} // '?',
 		    defined $pd->{capacity_gb} ? "$pd->{capacity_gb}GB" : '-',
 		    $pd->{media} // '-', $pd->{model} // '-',
 		    defined $pd->{celsius} ? "$pd->{celsius}C" : '-',
 		    defined $pd->{power_hours} ? "$pd->{power_hours}h" : '-',
+		    defined $pd->{grown_defects} ? "def=$pd->{grown_defects}" : '-',
 		    $pd->{health} // '-');
 	    }
 

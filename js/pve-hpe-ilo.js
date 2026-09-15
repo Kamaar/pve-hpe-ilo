@@ -65,6 +65,9 @@ Ext.define('PVE.hpe.TemperatureGrid', {
     border: false,
     emptyText: gettext('No readings'),
     scrollable: true,
+    // ExtJS grids suppress text selection by default, which makes a model
+    // number or a serial impossible to copy out of the panel.
+    viewConfig: { enableTextSelection: true },
 
     store: {
 	fields: ['name', 'celsius', 'context', 'warning', 'critical', 'health'],
@@ -113,6 +116,7 @@ Ext.define('PVE.hpe.FanGrid', {
     border: false,
     emptyText: gettext('No readings'),
     scrollable: true,
+    viewConfig: { enableTextSelection: true },
 
     store: {
 	fields: ['name', 'reading', 'units', 'health'],
@@ -163,6 +167,7 @@ Ext.define('PVE.hpe.PowerPanel', {
 	    xtype: 'component',
 	    itemId: 'summary',
 	    padding: '10 10 5 10',
+	    style: 'user-select: text;',
 	    html: '-',
 	},
 	{
@@ -170,6 +175,7 @@ Ext.define('PVE.hpe.PowerPanel', {
 	    itemId: 'supplies',
 	    border: false,
 	    flex: 1,
+	    viewConfig: { enableTextSelection: true },
 	    emptyText: gettext('No power supplies reported'),
 	    store: {
 		fields: ['name', 'model', 'output_watts', 'input_voltage',
@@ -267,6 +273,7 @@ Ext.define('PVE.hpe.StoragePanel', {
 	    xtype: 'component',
 	    itemId: 'controllers',
 	    padding: '10 10 5 10',
+	    style: 'user-select: text;',
 	    html: '-',
 	},
 	{
@@ -275,6 +282,7 @@ Ext.define('PVE.hpe.StoragePanel', {
 	    title: gettext('Logical Drives'),
 	    border: false,
 	    height: 160,
+	    viewConfig: { enableTextSelection: true },
 	    emptyText: gettext('No logical drives reported'),
 	    store: {
 		fields: ['controller', 'number', 'raid', 'capacity_mib', 'device',
@@ -338,10 +346,12 @@ Ext.define('PVE.hpe.StoragePanel', {
 	    border: false,
 	    flex: 1,
 	    minHeight: 160,
+	    viewConfig: { enableTextSelection: true },
 	    emptyText: gettext('No physical drives reported'),
 	    store: {
 		fields: ['controller', 'location', 'model', 'media', 'interface',
-		    'capacity_gb', 'celsius', 'trip_celsius', 'power_hours', 'ssd_wear', 'led',
+		    'capacity_gb', 'celsius', 'trip_celsius', 'power_hours', 'ssd_wear',
+		    'grown_defects', 'led',
 		    'health'],
 		sorters: [{ property: 'location' }],
 		data: [],
@@ -404,10 +414,31 @@ Ext.define('PVE.hpe.StoragePanel', {
 		    },
 		},
 		{
-		    header: gettext('Wear'),
+		    // Two different wear indicators, one column: SSDs report
+		    // endurance used, spinning disks report sectors remapped
+		    // since manufacture. Neither applies to the other.
+		    header: gettext('Wear / Defects'),
 		    dataIndex: 'ssd_wear',
-		    width: 80,
-		    renderer: (v) => v === undefined || v === null ? '-' : `${v} %`,
+		    width: 120,
+		    renderer: function(value, meta, rec) {
+			if (value !== undefined && value !== null) {
+			    return `${value} % ${gettext('used')}`;
+			}
+
+			let defects = rec.data.grown_defects;
+			if (defects === undefined || defects === null) {
+			    return '-';
+			}
+			if (defects === 0) {
+			    return `<span style="opacity:0.7;">0 ${gettext('defects')}</span>`;
+			}
+			// Any growth at all is worth noticing on a SAS drive;
+			// a count in the tens means plan a replacement.
+			let color = defects >= 10 ? '#FF6C59' : '#FF9900';
+			return `<span style="color:${color};">` +
+			    `<i class="fa fa-exclamation-triangle"></i> ` +
+			    `${defects} ${gettext('defects')}</span>`;
+		    },
 		},
 		{
 		    header: gettext('Status'),
@@ -525,6 +556,7 @@ Ext.define('PVE.hpe.ILOPanel', {
 	    xtype: 'component',
 	    itemId: 'statusbar',
 	    padding: 10,
+	    style: 'user-select: text;',
 	    html: gettext('Loading...'),
 	},
 	{

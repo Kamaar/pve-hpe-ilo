@@ -13,7 +13,7 @@ use warnings;
 use FindBin;
 use lib "$FindBin::Bin/../perl";
 
-use Test::More tests => 17;
+use Test::More tests => 19;
 
 use PVE::HPEiLO::Smart;
 
@@ -37,6 +37,8 @@ sub fixture {
     is($info->{trip_celsius}, 68, 'sas: trip temperature read');
     is($info->{power_hours}, 72939,
 	'sas: power on hours taken from the hours:minutes field');
+    is($info->{grown_defects}, 0,
+	'sas: grown defect list read, and zero is a value not an absence');
 }
 
 # --- rejection -------------------------------------------------------------
@@ -55,6 +57,7 @@ sub fixture {
 Device Model:     WDC WD40EFRX-68N32N0
 Serial Number:    WD-WCC7K0123456
 ID# ATTRIBUTE_NAME          FLAG     VALUE WORST THRESH TYPE      UPDATED  WHEN_FAILED RAW_VALUE
+  5 Reallocated_Sector_Ct   0x0033   200   200   140    Pre-fail  Always       -       7
   9 Power_On_Hours          0x0032   061   061   000    Old_age   Always       -       28911
 194 Temperature_Celsius     0x0022   119   106   000    Old_age   Always       -       33
 EOF
@@ -63,6 +66,8 @@ EOF
     is($info->{serial}, 'WD-WCC7K0123456', 'ata: serial number read');
     is($info->{celsius}, 33, 'ata: temperature taken from the attribute table');
     is($info->{power_hours}, 28911, 'ata: power on hours from the attribute table');
+    is($info->{grown_defects}, 7,
+	'ata: reallocated sectors stand in for the grown defect list');
 }
 
 # --- the merge -------------------------------------------------------------
