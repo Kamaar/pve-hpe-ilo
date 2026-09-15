@@ -86,26 +86,46 @@ All three are on a stock Proxmox node. If one is missing, the node is unusual �
 
 ---
 
-## 2. Copy the files to the node
+## 2. Get the files onto the node
 
-From the development machine. `cd` into the directory first so `scp` never has
-to parse a Windows drive letter, which it treats as a hostname separator:
-
-```powershell
-cd Z:\repo\proxmox
-scp -r . root@192.168.1.10:/root/pve-hpe-ilo
-```
-
-Use `scp`, `rsync`, or `git clone` — anything that copies bytes verbatim. Do
-**not** move the files through a tool that rewrites line endings: a shell
-script with CRLF fails with `bad interpreter: /bin/bash^M`.
-
-Check on the node:
+**Clone it on the node itself.** This is the only method that cannot leave you
+with a half-updated install, which is the failure mode worth avoiding: copying
+files by hand and missing one produces a node that runs new code against an old
+module, and the symptoms make no sense.
 
 ```sh
-cd /root/pve-hpe-ilo
-head -c 20 install.sh | od -c | head -1     # expect \n, never \r \n
+apt install -y git
+git clone https://github.com/Kamaar/pve-hpe-ilo.git /root/pve-hpe-ilo
 ```
+
+Updating later is then one line, covered in section 10.
+
+<details>
+<summary>If the node has no internet access</summary>
+
+Copy the working tree across with `scp`, `rsync`, WinSCP, or anything else that
+transfers bytes verbatim:
+
+```sh
+cd /path/to/pve-hpe-ilo
+scp -r . root@192.168.1.200:/root/pve-hpe-ilo
+```
+
+On Windows, `scp` ships with Git for Windows (available in Git Bash, not in
+PowerShell unless you have installed the OpenSSH client feature). Run it from
+inside the directory as shown — passing a path like `Z:\repo\proxmox` confuses
+`scp`, which reads the drive letter's colon as a host separator.
+
+Whatever you use, do **not** let it rewrite line endings: a shell script saved
+with CRLF fails as `bad interpreter: /bin/bash^M`. In WinSCP this means setting
+the transfer mode to **Binary** rather than Text, under Options → Preferences →
+Transfer. Verify on the node:
+
+```sh
+head -c 20 /root/pve-hpe-ilo/install.sh | od -c | head -1   # expect \n, never \r \n
+```
+
+</details>
 
 ---
 
@@ -347,14 +367,24 @@ console message from step 8 says so.
 ## 10. Updating this package
 
 ```sh
-cd /root/pve-hpe-ilo
-git pull          # or copy the files again
-./install.sh
-systemctl restart pve-hpe-ilo
+cd /root/pve-hpe-ilo && git pull && ./install.sh
 ```
 
-`install.sh` keeps an existing `config.json`, and restarts the service itself
-when the config was already in place.
+That is the whole update. `install.sh` copies every module rather than a list
+you have to keep current, keeps your existing `config.json`, reapplies the two
+hooks, restarts the poller, and restarts `pvedaemon` and `pveproxy` — the last
+one matters, because both cache what they have loaded and would otherwise keep
+serving the previous version.
+
+Then hard-refresh the browser (`Ctrl+Shift+R`). The panel JavaScript is cached
+under the *pve-manager* version string, which does not change when this package
+does, so a normal reload will not fetch it.
+
+Check what a node is actually running:
+
+```sh
+pve-hpe-ilo version
+```
 
 ---
 

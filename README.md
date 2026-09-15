@@ -52,8 +52,9 @@ preparation and what to check when something does not appear. The short version,
 as root on the node:
 
 ```sh
-git clone <this repo> pve-hpe-ilo && cd pve-hpe-ilo
-./install.sh
+apt install -y git
+git clone https://github.com/Kamaar/pve-hpe-ilo.git /root/pve-hpe-ilo
+cd /root/pve-hpe-ilo && ./install.sh
 ```
 
 Then:

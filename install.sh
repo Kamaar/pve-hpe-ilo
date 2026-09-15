@@ -71,9 +71,16 @@ else
 fi
 
 echo "patching the Proxmox files"
-/usr/sbin/pve-hpe-ilo-patch
+/usr/sbin/pve-hpe-ilo-patch --no-restart
 
 systemctl daemon-reload
+
+# Always, not only when the patcher changed something. pvedaemon caches the
+# Perl modules it has loaded and pveproxy caches the rendered index page, so
+# after an update that changed API.pm or the panel they would both go on
+# serving the previous version indefinitely.
+echo "restarting pvedaemon and pveproxy"
+systemctl restart pvedaemon pveproxy
 
 if [ "$NEW_CONFIG" -eq 1 ]; then
     cat <<EOF

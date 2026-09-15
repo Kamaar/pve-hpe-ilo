@@ -24,16 +24,18 @@ BACKUP_DIR="$ROOT/var/lib/pve-hpe-ilo/backup"
 
 MODE="apply"
 QUIET=0
+RESTART=1
 
 for arg in "$@"; do
     case "$arg" in
-	--check)  MODE="check" ;;
-	--remove) MODE="remove" ;;
-	--quiet)  QUIET=1 ;;
+	--check)      MODE="check" ;;
+	--remove)     MODE="remove" ;;
+	--quiet)      QUIET=1 ;;
+	--no-restart) RESTART=0 ;;
 	-h|--help)
 	    sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
 	    echo
-	    echo "usage: $(basename "$0") [--check|--remove] [--quiet]"
+	    echo "usage: $(basename "$0") [--check|--remove] [--quiet] [--no-restart]"
 	    exit 0
 	    ;;
 	*)
@@ -205,6 +207,8 @@ esac
 if [ "$CHANGED" -eq 1 ]; then
     if [ -n "$ROOT" ]; then
 	say "PVE_HPE_ILO_ROOT is set - not touching services"
+    elif [ "$RESTART" -eq 0 ]; then
+	say "not restarting services (--no-restart); the caller will do it"
     else
 	# pvedaemon caches loaded Perl modules; pveproxy caches the rendered
 	# index template. Both need a restart for the change to be visible.
