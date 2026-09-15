@@ -252,6 +252,24 @@ Ext.define('PVE.hpe.PowerPanel', {
     },
 });
 
+/* iLO spells a lit bay either way depending on firmware and on whether the
+ * controller blinks or holds it steady. */
+PVE.hpe.ledIsOn = function(value) {
+    return value === 'Blinking' || value === 'Lit';
+};
+
+/* The lit-bay colour for the action column. Injected once rather than shipped
+ * as a stylesheet, so the panel stays a single file. */
+(function() {
+    if (document.getElementById('pve-hpe-ilo-style')) {
+	return;
+    }
+    let style = document.createElement('style');
+    style.id = 'pve-hpe-ilo-style';
+    style.textContent = '.pve-hpe-led-on { color: #FF9900 !important; }';
+    document.head.appendChild(style);
+})();
+
 PVE.hpe.formatMiB = function(mib) {
     if (mib === undefined || mib === null) {
 	return '-';
@@ -447,9 +465,9 @@ Ext.define('PVE.hpe.StoragePanel', {
 		    width: 110,
 		    renderer: function(value, meta, rec) {
 			let html = PVE.hpe.renderHealth(value);
-			// A blinking bay LED means somebody is locating that
-			// drive right now; worth seeing next to its status.
-			if (rec.data.led === 'Blinking') {
+			// A lit bay means somebody is locating that drive right
+			// now; worth seeing next to its status.
+			if (PVE.hpe.ledIsOn(rec.data.led)) {
 			    html += ' <i class="fa fa-lightbulb-o" style="color:#FF9900;"></i>';
 			}
 			return html;
@@ -464,12 +482,16 @@ Ext.define('PVE.hpe.StoragePanel', {
 		    width: 70,
 		    align: 'center',
 		    items: [{
-			iconCls: 'fa fa-lightbulb-o',
+			getClass: function(v, meta, rec) {
+			    return PVE.hpe.ledIsOn(rec.data.led)
+				? 'fa fa-lightbulb-o pve-hpe-led-on'
+				: 'fa fa-lightbulb-o';
+			},
 			getTip: function(v, meta, rec) {
 			    if (!rec.data.led_control) {
 				return gettext('Needs ssacli installed on the node');
 			    }
-			    return rec.data.led === 'Blinking'
+			    return PVE.hpe.ledIsOn(rec.data.led)
 				? gettext('Turn the bay LED off')
 				: gettext('Light this bay to identify the disk');
 			},
@@ -478,20 +500,26 @@ Ext.define('PVE.hpe.StoragePanel', {
 			    rec.data.slot === null,
 			handler: function(view, rowIndex, colIndex, item, e, rec) {
 			    let panel = view.up('pveHPEiLOStorage');
-			    let lit = rec.get('led') === 'Blinking';
+			    let lit = PVE.hpe.ledIsOn(rec.get('led'));
+			    let location = rec.get('location');
+			    let wanted = lit ? 'Off' : 'Blinking';
 
 			    Proxmox.Utils.API2Request({
 				url: `/nodes/${panel.nodename}/hpe-ilo-led`,
 				method: 'POST',
 				params: {
 				    slot: String(rec.get('slot')),
-				    drive: rec.get('location'),
+				    drive: location,
 				    state: lit ? 'off' : 'on',
 				},
 				success: function() {
-				    // iLO only reports the new state on its own
-				    // slow cycle, so reflect it immediately.
-				    rec.set('led', lit ? 'Off' : 'Blinking');
+				    // iLO re-reads IndicatorLED only on the
+				    // storage cycle, up to five minutes away.
+				    // Remember what we asked for so the next
+				    // refresh does not revert the icon and make
+				    // the click look like it failed.
+				    panel.ledOverrides[location] = wanted;
+				    rec.set('led', wanted);
 				    rec.commit();
 				},
 				failure: function(response) {
@@ -504,6 +532,13 @@ Ext.define('PVE.hpe.StoragePanel', {
 	    ],
 	},
     ],
+
+    initComponent: function() {
+	let me = this;
+	// Bay -> LED state we asked for but iLO has not confirmed yet.
+	me.ledOverrides = {};
+	me.callParent();
+    },
 
     updateData: function(storage, age) {
 	let me = this;
@@ -568,11 +603,24 @@ Ext.define('PVE.hpe.StoragePanel', {
 	    Ext.Array.each(c.drives || [], function(pd) {
 		// The LED control needs the controller slot and whether ssacli
 		// is present; both live one level up from the drive.
-		pds.push(Ext.apply({
+		let row = Ext.apply({
 		    controller: label,
 		    slot: c.slot,
 		    led_control: storage.led_control ? 1 : 0,
-		}, pd));
+		}, pd);
+
+		// Hold a locally requested LED state until iLO reports the
+		// same thing, then stop overriding: the backend has caught up.
+		let pending = me.ledOverrides[row.location];
+		if (pending !== undefined) {
+		    if (pending === row.led) {
+			delete me.ledOverrides[row.location];
+		    } else {
+			row.led = pending;
+		    }
+		}
+
+		pds.push(row);
 	    });
 	});
 
