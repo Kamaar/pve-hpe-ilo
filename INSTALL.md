@@ -100,6 +100,18 @@ git clone https://github.com/Kamaar/pve-hpe-ilo.git /root/pve-hpe-ilo
 
 Updating later is then one line, covered in section 10.
 
+> **Chain the commands with `&&`.** If that directory already holds an older
+> copy, `git clone` refuses with *destination path already exists* — and an
+> `install.sh` run on the next line goes ahead anyway, installing the old tree
+> over a working node. Every step prints the version it is installing, so check
+> that line rather than assuming. To start from a stale directory:
+>
+> ```sh
+> mv /root/pve-hpe-ilo /root/pve-hpe-ilo.old
+> git clone https://github.com/Kamaar/pve-hpe-ilo.git /root/pve-hpe-ilo && \
+>   cd /root/pve-hpe-ilo && ./install.sh
+> ```
+
 <details>
 <summary>If the node has no internet access</summary>
 

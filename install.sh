@@ -41,6 +41,19 @@ if [ "${1:-}" = "--uninstall" ]; then
     exit 0
 fi
 
+# Announce which tree is being installed. Running an old checkout by mistake
+# silently downgrades a node, and the symptom -- a feature that was working and
+# now is not -- points nowhere near the cause.
+SRC_VERSION=$(sed -n "s/^our \$VERSION = '\(.*\)';/\1/p" \
+    "$SRC/perl/PVE/HPEiLO/Version.pm" 2>/dev/null)
+INSTALLED_VERSION=$(/usr/sbin/pve-hpe-ilo version 2>/dev/null | awk '{print $2}')
+
+echo "installing pve-hpe-ilo ${SRC_VERSION:-unknown} from $SRC"
+if [ -n "$INSTALLED_VERSION" ] && [ -n "$SRC_VERSION" ] \
+	&& [ "$INSTALLED_VERSION" != "$SRC_VERSION" ]; then
+    echo "  (replacing $INSTALLED_VERSION already on this node)"
+fi
+
 echo "installing Perl modules to $PERL_DIR"
 install -d -m 0755 "$PERL_DIR"
 # Installed as a set rather than named one by one, so adding a module never
