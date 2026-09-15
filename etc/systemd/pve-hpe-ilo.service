@@ -18,8 +18,14 @@ RuntimeDirectoryMode=0750
 # from the system, so take the rest away.
 NoNewPrivileges=yes
 PrivateTmp=yes
-PrivateDevices=yes
 ProtectSystem=strict
+
+# Deliberately NOT PrivateDevices=yes: that gives the service a private /dev
+# holding only pseudo-devices, so /dev/sg* disappears and the smartctl
+# enrichment silently finds no drives. Allow the scsi-generic nodes it needs
+# and nothing else instead.
+DevicePolicy=closed
+DeviceAllow=char-sg rw
 ProtectHome=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes

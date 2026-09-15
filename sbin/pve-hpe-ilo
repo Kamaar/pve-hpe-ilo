@@ -21,6 +21,8 @@ commands:
   probe            connect to iLO and print a formatted sample
   show             print the cached sample the GUI panel reads
   status           one-line health summary (suitable for scripts)
+  smart            diagnose the smartctl enrichment: what it found, what iLO
+                   reported, and which serial numbers matched
   raw <path>       pretty-print any Redfish resource, e.g.
                    raw /redfish/v1/Chassis/1/Thermal/
 
@@ -229,6 +231,63 @@ if ($cmd eq 'probe') {
     # '-' means storage polling is off, which is not a fault.
     $bad = 1 if $storage ne 'OK' && $storage ne '-';
     exit($bad ? 2 : 0);
+} elsif ($cmd eq 'smart') {
+    # Every step that can silently yield nothing, reported separately. The
+    # join is by serial number, so the two lists of serials are the point.
+    my $bin = PVE::HPEiLO::Smart::binary();
+    printf("smartctl:  %s\n", $bin // 'NOT FOUND - install smartmontools');
+    exit 1 if !$bin;
+
+    my @sg = sort glob('/dev/sg*');
+    printf("sg nodes:  %s\n", @sg ? join(' ', @sg) : 'NONE - no scsi-generic devices');
+    exit 1 if !@sg;
+
+    my ($client, $cfg) = client();
+
+    my $smart = PVE::HPEiLO::Smart::collect(timeout => $cfg->{smart_timeout});
+    if (!$smart) {
+	print "\nsmartctl returned nothing usable for any cciss index.\n";
+	print "Try by hand: $bin -a -d cciss,0 $sg[0]\n";
+	exit 1;
+    }
+
+    printf("device:    %s\n", $smart->{device});
+    print "\nserials reported by smartctl:\n";
+    for my $serial (sort keys %{ $smart->{by_serial} }) {
+	my $i = $smart->{by_serial}->{$serial};
+	printf("  %-24s %sC  %sh\n", $serial,
+	    $i->{celsius} // '-', $i->{power_hours} // '-');
+    }
+
+    my $storage = eval { $client->read_storage() };
+    if ($@) {
+	my $err = $@;
+	chomp $err;
+	print "\ncannot read the Smart Array tree from iLO: $err\n";
+	exit 1;
+    }
+
+    print "\nserials reported by iLO:\n";
+    my $matched = 0;
+    my $total = 0;
+    for my $ctrl (@{ $storage->{controllers} // [] }) {
+	for my $drive (@{ $ctrl->{drives} // [] }) {
+	    $total++;
+	    my $serial = $drive->{serial};
+	    my $hit = defined $serial && $smart->{by_serial}->{$serial};
+	    $matched++ if $hit;
+	    printf("  %-12s %-24s %s\n", $drive->{location} // '?',
+		defined $serial ? "'$serial'" : '(none reported)',
+		$hit ? 'MATCH' : 'no match');
+	}
+    }
+
+    printf("\n%d of %d drives matched.\n", $matched, $total);
+    if ($matched < $total) {
+	print "The two sides disagree on the serial number format; quoting above\n"
+	    . "shows any stray whitespace. The join needs normalizing.\n";
+	exit 1;
+    }
 } elsif ($cmd eq 'raw') {
     die "raw needs a resource path\n\n$usage" if !defined $path;
     my ($client) = client();

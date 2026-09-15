@@ -13,14 +13,32 @@ package PVE::HPEiLO::Smart;
 use strict;
 use warnings;
 
-use constant SMARTCTL => '/usr/sbin/smartctl';
+# Debian puts it in /usr/sbin, but do not bet the feature on that.
+my @SMARTCTL_PATHS = qw(
+    /usr/sbin/smartctl
+    /sbin/smartctl
+    /usr/bin/smartctl
+    /usr/local/sbin/smartctl
+);
+
+my $binary;
+
+sub binary {
+    return $binary if defined $binary;
+    for my $path (@SMARTCTL_PATHS) {
+	next if !-x $path;
+	$binary = $path;
+	return $binary;
+    }
+    return undef;
+}
 
 # Physical drive slots to probe on the controller. Scanning stops early at the
 # first index that returns nothing, so this is only an upper bound.
 use constant MAX_INDEX => 32;
 
 sub available {
-    return -x SMARTCTL;
+    return defined binary();
 }
 
 # Runs a command with a hard timeout, returning its stdout or undef. No shell
@@ -105,7 +123,7 @@ sub find_device {
     my $timeout = $opt{timeout} // 10;
 
     for my $dev (sort glob('/dev/sg*')) {
-	my $text = _run($timeout, SMARTCTL, '-i', '-d', 'cciss,0', $dev);
+	my $text = _run($timeout, binary(), '-i', '-d', 'cciss,0', $dev);
 	my $info = _parse($text);
 	return $dev if $info;
     }
@@ -134,7 +152,7 @@ sub collect {
 
     my %by_serial;
     for my $index (0 .. $limit - 1) {
-	my $text = _run($timeout, SMARTCTL, '-a', '-d', "cciss,$index", $device);
+	my $text = _run($timeout, binary(), '-a', '-d', "cciss,$index", $device);
 	my $info = _parse($text);
 
 	# An empty slot ends the scan: indexes are contiguous on a Smart Array.
