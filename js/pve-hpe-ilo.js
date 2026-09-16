@@ -13,6 +13,12 @@
 
 Ext.ns('PVE.hpe');
 
+/* Mirrors of the constants in PVE::HPEiLO::Check. They exist here only so the
+ * bars can be coloured by the same rules the health check applies -- change
+ * one and change the other, or the panel starts contradicting itself. */
+PVE.hpe.FAN_ALARM_PERCENT = 90;
+PVE.hpe.DRIVE_TRIP_MARGIN = 5;
+
 PVE.hpe.HEALTH_ICONS = {
     OK: { cls: 'fa-check-circle', color: '#21BF4B' },
     Warning: { cls: 'fa-exclamation-circle', color: '#FF9900' },
@@ -34,9 +40,19 @@ PVE.hpe.renderHealth = function(value) {
 	Ext.htmlEncode(value);
 };
 
-/* A horizontal bar behind the value. `max` is the sensor's critical
- * threshold where one exists, so the bar means "how close to trouble". */
-PVE.hpe.renderBar = function(value, max, text) {
+/* A horizontal bar behind the value.
+ *
+ * `max` sets how full the bar looks; `thresholds` sets what colour it is, and
+ * must be the same numbers PVE::HPEiLO::Check uses. Colouring on a percentage
+ * of `max` instead was the obvious thing and it was wrong: a sensor at 50 °C
+ * against a 60 °C limit is 83% of the way there and went amber, while the
+ * banner -- correctly -- stayed green because the limit had not been crossed.
+ * A panel that contradicts itself teaches people to ignore both halves.
+ *
+ * Omit `thresholds` for a gauge where being full is not a problem, such as
+ * rebuild progress.
+ */
+PVE.hpe.renderBar = function(value, max, text, thresholds) {
     if (value === undefined || value === null) {
 	return '-';
     }
@@ -44,10 +60,14 @@ PVE.hpe.renderBar = function(value, max, text) {
     let pct = Math.round(ratio * 100);
 
     let color = '#21BF4B';
-    if (ratio >= 0.9) {
-	color = '#FF6C59';
-    } else if (ratio >= 0.75) {
-	color = '#FF9900';
+    if (thresholds) {
+	let crit = thresholds.critical;
+	let warn = thresholds.warning;
+	if (crit !== undefined && crit !== null && value >= crit) {
+	    color = '#FF6C59';
+	} else if (warn !== undefined && warn !== null && value >= warn) {
+	    color = '#FF9900';
+	}
     }
 
     return `<div style="position:relative;height:14px;background:rgba(128,128,128,0.15);` +
@@ -96,7 +116,10 @@ Ext.define('PVE.hpe.TemperatureGrid', {
 		// Without a threshold there is no meaningful scale; 100 C is
 		// a sane ceiling for anything inside a server chassis.
 		let max = rec.data.critical || rec.data.warning || 100;
-		return PVE.hpe.renderBar(value, max, `${value} °C`);
+		return PVE.hpe.renderBar(value, max, `${value} °C`, {
+		    warning: rec.data.warning,
+		    critical: rec.data.critical,
+		});
 	    },
 	},
 	{
@@ -139,7 +162,11 @@ Ext.define('PVE.hpe.FanGrid', {
 		// iLO 4 reports duty cycle in percent, iLO 5 may report RPM.
 		let units = rec.data.units || 'Percent';
 		if (units === 'Percent') {
-		    return PVE.hpe.renderBar(value, 100, `${value} %`);
+		    // 90% is where Check starts calling it a problem, because
+		    // on HPE hardware that is how thermal trouble announces
+		    // itself before anything reports unhealthy.
+		    return PVE.hpe.renderBar(value, 100, `${value} %`,
+			{ warning: PVE.hpe.FAN_ALARM_PERCENT });
 		}
 		return `${value} ${Ext.htmlEncode(units)}`;
 	    },
@@ -423,7 +450,12 @@ Ext.define('PVE.hpe.StoragePanel', {
 			if (!max) {
 			    return `${value} °C`;
 			}
-			return PVE.hpe.renderBar(value, max, `${value} °C`);
+			// Check warns within DRIVE_TRIP_MARGIN of the trip
+			// point; the bar has to agree with it.
+			return PVE.hpe.renderBar(value, max, `${value} °C`, {
+			    warning: max - PVE.hpe.DRIVE_TRIP_MARGIN,
+			    critical: max,
+			});
 		    },
 		},
 		{
@@ -902,10 +934,138 @@ Ext.define('PVE.hpe.ILOPanel', {
  * it. Overriding the toolkit's own initComponent lands exactly in that gap,
  * with me still being the PVE.node.Config instance.
  */
+/* A one-line version of the banner for the node Summary page, which is where
+ * everyone lands. The Hardware tab is only useful to someone who already
+ * suspects something; this is for the other 99% of visits.
+ *
+ * It renders nothing at all when the hardware is healthy. A permanent green
+ * strip on the summary of every node would be noise, and noise is what people
+ * learn to look past.
+ */
+Ext.define('PVE.hpe.SummaryBanner', {
+    extend: 'Ext.panel.Panel',
+    xtype: 'pveHPEiLOSummaryBanner',
+
+    border: false,
+    bodyPadding: 0,
+    hidden: true,
+    columnWidth: 1,
+
+    // Slower than the hardware tab: this is a glance, not a dashboard.
+    updateInterval: 30000,
+
+    initComponent: function() {
+	let me = this;
+
+	if (!me.nodename) {
+	    throw "no node name specified";
+	}
+
+	me.callParent();
+
+	me.updateTask = Ext.TaskManager.newTask({
+	    run: () => me.reload(),
+	    interval: me.updateInterval,
+	});
+
+	me.on('afterrender', () => me.updateTask.start());
+	me.on('destroy', () => me.updateTask.stop());
+    },
+
+    reload: function() {
+	let me = this;
+
+	Proxmox.Utils.API2Request({
+	    url: `/nodes/${me.nodename}/hpe-ilo`,
+	    method: 'GET',
+	    success: function(response) {
+		me.render_issues((response.result.data || {}).issues || []);
+	    },
+	    // Silent on failure. If the endpoint is missing or the user lacks
+	    // Sys.Audit, the summary page should look exactly as it always did.
+	    failure: () => me.setHidden(true),
+	});
+    },
+
+    render_issues: function(issues) {
+	let me = this;
+
+	let counts = { critical: 0, warning: 0, info: 0 };
+	Ext.Array.each(issues, (i) => {
+	    if (counts[i.severity] !== undefined) {
+		counts[i.severity]++;
+	    }
+	});
+
+	// 'info' alone means something like a rebuild running: worth seeing on
+	// the summary, but not worth colouring the page.
+	if (!counts.critical && !counts.warning && !counts.info) {
+	    me.setHidden(true);
+	    return;
+	}
+
+	let level = counts.critical ? 'critical' : (counts.warning ? 'warning' : 'info');
+	let style = {
+	    critical: { bg: '#FDE7E4', border: '#FF6C59', fg: '#8B2114', icon: 'fa-times-circle' },
+	    warning: { bg: '#FFF4E0', border: '#FF9900', fg: '#7A4A00', icon: 'fa-exclamation-triangle' },
+	    info: { bg: '#E7F1FD', border: '#3892D4', fg: '#1B4E75', icon: 'fa-info-circle' },
+	}[level];
+
+	let lines = issues.map(
+	    (i) => `<li style="margin-top:2px;">${Ext.htmlEncode(i.text)}</li>`).join('');
+
+	me.setHtml(
+	    `<div style="background:${style.bg};border-left:4px solid ${style.border};` +
+	    `color:${style.fg};border-radius:3px;padding:8px 12px;">` +
+	    `<div style="font-size:14px;font-weight:600;">` +
+	    `<i class="fa ${style.icon}"></i> ` +
+	    Ext.String.format(gettext('Server hardware: {0} issue(s)'), issues.length) +
+	    `</div><ul style="margin:6px 0 0 18px;padding:0;">${lines}</ul>` +
+	    `<div style="margin-top:6px;opacity:0.8;">` +
+	    gettext('Details in the Hardware (iLO) tab') + `</div></div>`);
+
+	me.setHidden(false);
+    },
+});
+
 /* Both readable from the browser console: overrideInstalled names the class
  * that was actually patched, injected says whether the graft then happened. */
 PVE.hpe.injected = false;
 PVE.hpe.overrideInstalled = false;
+PVE.hpe.summaryInjected = false;
+
+/* The Summary page is an ordinary container, not the treelist-backed Config
+ * panel, so inserting after callParent() genuinely renders here. Kept separate
+ * from the tab graft on purpose: if this one ever stops working, the tab and
+ * the notifications are unaffected.
+ */
+Ext.define('PVE.hpe.SummaryOverride', {
+    override: 'PVE.node.Summary',
+
+    initComponent: function() {
+	let me = this;
+
+	me.callParent();
+
+	try {
+	    let nodename = me.pveSelNode.data.node;
+	    let caps = Ext.state.Manager.get('GuiCap');
+	    let allowed = !caps || !caps.nodes || caps.nodes['Sys.Audit'];
+
+	    if (nodename && allowed) {
+		me.insert(0, {
+		    xtype: 'pveHPEiLOSummaryBanner',
+		    nodename: nodename,
+		});
+		PVE.hpe.summaryInjected = true;
+	    }
+	} catch (err) {
+	    // The node summary is the first page everyone sees. It must survive
+	    // anything going wrong here.
+	    console.error('pve-hpe-ilo: could not add the summary banner', err);
+	}
+    },
+});
 
 PVE.hpe.nodeConfigOverride = function() {
     let me = this;

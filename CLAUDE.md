@@ -199,6 +199,22 @@ degrades to writing the message to stderr, where the unit puts it in the
 journal. A monitor that dies because its own alerting broke is worse than no
 monitor.
 
+**The bars are coloured by the same thresholds.** `PVE.hpe.renderBar` takes an
+explicit `{warning, critical}`; shading by percentage of the maximum was the
+obvious approach and it was wrong, because a sensor at 50 °C against a 60 °C
+limit is 83% of the way there and went amber while the banner stayed green.
+`PVE.hpe.FAN_ALARM_PERCENT` and `PVE.hpe.DRIVE_TRIP_MARGIN` mirror the
+constants in `Check.pm` for exactly this reason — change one, change the other.
+Omitting the thresholds gives a neutral gauge, which is what rebuild progress
+needs: at 95% it is nearly done, not nearly on fire.
+
+**The Summary banner is a separate graft from the tab.** `PVE.node.Summary` is
+an ordinary container, so `insert(0, ...)` after `callParent()` does render
+there — unlike the treelist-backed Config panel. It is kept independent on
+purpose: if it ever stops working, the tab and the notifications are
+unaffected. `PVE.hpe.summaryInjected` is its console flag. It renders nothing
+at all when healthy.
+
 The check unit is deliberately **less** sandboxed than the poller: it reaches
 into PVE's notification system, which reads `/etc/pve`, may exec a mail
 transport, and talks to the network. `PrivateDevices=yes` on the poller already

@@ -156,7 +156,9 @@ reading of 0, which would otherwise show up as a dead fan and a frozen CPU.
 ## Warnings, in the panel and by mail
 
 A banner at the top of the tab summarises every check: green when nothing is
-wrong, amber or red with the specific findings when something is. It covers
+wrong, amber or red with the specific findings when something is. A second one
+appears on the **node Summary page** — the page you actually land on — whenever
+something is wrong, and stays invisible when nothing is. It covers
 sensor thresholds, fans pinned near maximum, power supply health, controller
 and array health, the cache backup capacitor, drives approaching their trip
 temperature, and any drive that has started reallocating sectors.

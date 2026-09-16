@@ -1,5 +1,54 @@
 # Changelog
 
+## 1.1.0 — 2026-09-16
+
+The panel stops being something you have to remember to look at.
+
+### Health banner
+
+A banner at the top of the Hardware tab summarises every check, and a second
+one appears on the **node Summary page** — the page everyone actually lands on
+— whenever something is wrong. It stays invisible while the hardware is
+healthy: a permanent green strip on every node's summary is noise, and noise is
+what people learn to look past.
+
+Checks cover sensor thresholds, fans pinned near maximum, power supply health,
+controller and array health, the cache backup capacitor, drives approaching
+their trip temperature, and any drive that has begun reallocating sectors.
+
+### Notifications
+
+The same evaluation runs on a timer every fifteen minutes and notifies through
+Proxmox's own notification system, so alerts arrive wherever backup mail
+already goes, with no separate mail configuration.
+
+It notifies on **change**, not on state. A drive that has been at three
+reallocated sectors for a month says so once, not ninety-six times a day.
+
+```sh
+pve-hpe-ilo check --dry-run    # show what it would send, change nothing
+pve-hpe-ilo check --force      # send anyway, to test the path
+systemctl disable --now pve-hpe-ilo-check.timer
+```
+
+`PVE::Notify` is not a supported public API, so the call is wrapped: if Proxmox
+changes it, the message goes to the journal rather than vanishing.
+
+### Bars now agree with the checks
+
+The coloured bars were shaded by percentage of their maximum, while the checks
+fire on the actual threshold. A sensor at 50 °C against a 60 °C limit is 83% of
+the way there, so the bar went amber while the banner — correctly — stayed
+green. A panel that contradicts itself teaches people to ignore both halves.
+
+Bars now take the same thresholds the checks use. This also fixes a rebuild at
+95% being drawn in red, as though a nearly finished rebuild were an emergency.
+
+### Also
+
+Two fields that were collected and never shown: spare and unassigned drive
+counts, and power supply capacity with the percentage currently drawn.
+
 ## 1.0.1 — 2026-09-15
 
 Fixes found by running 1.0.0 on real hardware. No new features.
