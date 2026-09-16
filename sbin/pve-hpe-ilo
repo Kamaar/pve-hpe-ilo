@@ -13,6 +13,8 @@ use POSIX qw(strftime);
 use PVE::HPEiLO::Config;
 use PVE::HPEiLO::Redfish;
 use PVE::HPEiLO::Smart;
+use PVE::HPEiLO::Check;
+use PVE::HPEiLO::Notify;
 use PVE::HPEiLO::Version;
 
 my $usage = <<"EOF";
@@ -22,6 +24,8 @@ commands:
   probe            connect to iLO and print a formatted sample
   show             print the cached sample the GUI panel reads
   status           one-line health summary (suitable for scripts)
+  check            evaluate the cached sample and notify on anything that
+                   changed since the last run (this is what the timer runs)
   smart            diagnose the smartctl enrichment: what it found, what iLO
                    reported, and which serial numbers matched
   raw <path>       pretty-print any Redfish resource, e.g.
@@ -33,6 +37,8 @@ options:
   --json           machine readable output (probe, show)
   --no-storage     skip the Smart Array walk (probe); much faster on iLO 4,
                    which needs one request per physical drive
+  --dry-run        show what check would send, change nothing
+  --force          make check notify even when nothing changed
 EOF
 
 my $cmd = shift(@ARGV) // '';
@@ -47,6 +53,10 @@ while (@ARGV) {
 	$opt{json} = 1;
     } elsif ($arg eq '--no-storage') {
 	$opt{storage} = 0;
+    } elsif ($arg eq '--dry-run') {
+	$opt{dry_run} = 1;
+    } elsif ($arg eq '--force') {
+	$opt{force} = 1;
     } elsif ($arg =~ /^-/) {
 	die "unknown option '$arg'\n\n$usage";
     } else {
@@ -236,6 +246,93 @@ if ($cmd eq 'version') {
     # '-' means storage polling is off, which is not a fault.
     $bad = 1 if $storage ne 'OK' && $storage ne '-';
     exit($bad ? 2 : 0);
+} elsif ($cmd eq 'check') {
+    # A missing cache is itself worth reporting: it means the poller is not
+    # running, which is indistinguishable from healthy hardware if nobody says.
+    my $sample = eval { read_cache() };
+    if ($@) {
+	my $err = $@;
+	chomp $err;
+	$sample = { status => 'error', error => $err };
+    }
+
+    my $issues = PVE::HPEiLO::Check::evaluate($sample);
+
+    my $state_file = PVE::HPEiLO::Config::STATE_FILE;
+    my $previous = [];
+    if (open(my $fh, '<', $state_file)) {
+	local $/;
+	my $raw = <$fh> // '';
+	close($fh);
+	my $state = eval { decode_json($raw) };
+	$previous = $state->{keys} if ref($state) eq 'HASH' && ref($state->{keys}) eq 'ARRAY';
+    }
+
+    my $delta = PVE::HPEiLO::Check::diff($previous, $issues);
+    my $changed = @{ $delta->{new} } || @{ $delta->{cleared} };
+
+    # Report the current state to the terminal regardless; only the
+    # notification is conditional.
+    if (@$issues) {
+	printf("%d issue(s):\n", scalar @$issues);
+	printf("  [%-8s] %s\n", $_->{severity}, $_->{text}) for @$issues;
+    } else {
+	print "no issues\n";
+    }
+    printf("changed since last run: %d new, %d cleared\n",
+	scalar @{ $delta->{new} }, scalar @{ $delta->{cleared} });
+
+    if ($changed || $opt{force}) {
+	my ($title, $severity, @lines);
+
+	if (@{ $delta->{new} }) {
+	    $severity = PVE::HPEiLO::Check::worst($delta->{new}) // 'info';
+	    $title = sprintf('HPE iLO: %d new hardware issue(s)',
+		scalar @{ $delta->{new} });
+	    push @lines, map { "- $_->{text}" } @{ $delta->{new} };
+	} else {
+	    $severity = 'recovery';
+	    $title = 'HPE iLO: hardware issues resolved';
+	}
+
+	if (@{ $delta->{cleared} }) {
+	    push @lines, '', 'No longer reported:';
+	    push @lines, map { "- $_" } @{ $delta->{cleared} };
+	}
+
+	if (@$issues) {
+	    push @lines, '', 'Still outstanding:';
+	    push @lines, map { "- [$_->{severity}] $_->{text}" } @$issues;
+	}
+
+	my $message = join("\n", @lines);
+
+	if ($opt{dry_run}) {
+	    print "\n--- would send ($severity) ---\n$title\n$message\n";
+	} else {
+	    my ($sent, $err) = PVE::HPEiLO::Notify::send_notification(
+		severity => $severity, title => $title, message => $message);
+	    print $sent ? "notification sent\n"
+		: "notification failed, logged instead: $err\n";
+	}
+    }
+
+    if (!$opt{dry_run}) {
+	my $dir = $state_file;
+	$dir =~ s{/[^/]+$}{};
+	mkdir($dir, 0750) if !-d $dir;
+
+	my $tmp = "$state_file.tmp.$$";
+	if (open(my $fh, '>', $tmp)) {
+	    print $fh encode_json({ keys => $delta->{keys}, timestamp => time() });
+	    close($fh);
+	    rename($tmp, $state_file) or unlink($tmp);
+	} else {
+	    warn "cannot write $state_file: $!\n";
+	}
+    }
+
+    exit(@$issues ? 1 : 0);
 } elsif ($cmd eq 'smart') {
     # Every step that can silently yield nothing, reported separately. The
     # join is by serial number, so the two lists of serials are the point.

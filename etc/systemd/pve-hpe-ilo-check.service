@@ -1,0 +1,21 @@
+[Unit]
+Description=Evaluate HPE iLO telemetry and notify on changes
+Documentation=man:pve-hpe-ilo(8)
+After=pve-hpe-ilo.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/pve-hpe-ilo check
+
+# `check` exits 1 while any issue is outstanding, which is a report, not a
+# failure. Without this the unit would sit in "failed" for as long as a drive
+# has a reallocated sector, and the one signal systemd gives would be useless.
+SuccessExitStatus=0 1
+
+# Deliberately light. This process reaches into PVE's notification system,
+# which reads /etc/pve, may exec a mail transport, and talks to the network;
+# sandboxing it tightly is how you get a monitor that silently cannot report.
+# The poller is the one that gets locked down, because it only needs a socket.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes

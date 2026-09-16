@@ -9,6 +9,7 @@ test: syntax
 	perl -I perl t/normalize.t
 	perl -I perl t/smart.t
 	perl -I perl t/ssacli.t
+	perl -I perl t/check.t
 	bash t/patch.sh
 
 # Everything compiles without a Proxmox node present; API.pm is the exception,

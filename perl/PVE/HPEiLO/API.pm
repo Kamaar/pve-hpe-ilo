@@ -17,6 +17,7 @@ use JSON;
 use PVE::JSONSchema qw(get_standard_option);
 
 use PVE::HPEiLO::Config;
+use PVE::HPEiLO::Check;
 use PVE::HPEiLO::Ssacli;
 use PVE::HPEiLO::Version;
 
@@ -116,6 +117,11 @@ sub register {
 	    # Comes from the module actually loaded in pvedaemon, so it reports
 	    # what this node is running rather than what the cache was written by.
 	    $data->{version} = $PVE::HPEiLO::Version::VERSION;
+
+	    # Evaluated here rather than stored in the cache so that it accounts
+	    # for the staleness decision just made above, and so that changing a
+	    # rule takes effect without waiting for the next poll.
+	    $data->{issues} = PVE::HPEiLO::Check::evaluate($data);
 
 	    return $data;
 	},

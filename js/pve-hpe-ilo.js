@@ -242,6 +242,12 @@ Ext.define('PVE.hpe.PowerPanel', {
 	if (power.interval_min) {
 	    parts.push(`${gettext('over')} ${power.interval_min} min`);
 	}
+	// Headroom: useful when deciding whether another card or a shelf of
+	// disks fits inside what the supplies can actually deliver.
+	if (power.capacity_watts) {
+	    let pct = watts ? ` (${Math.round((watts / power.capacity_watts) * 100)} %)` : '';
+	    parts.push(`${gettext('Capacity')}: ${power.capacity_watts} W${pct}`);
+	}
 
 	let big = watts === undefined || watts === null ? '-' : `${watts} W`;
 	summary.setHtml(
@@ -573,6 +579,15 @@ Ext.define('PVE.hpe.StoragePanel', {
 	    if (c.rebuild_priority) {
 		bits.push(`${gettext('Rebuild')} ${Ext.htmlEncode(c.rebuild_priority)}`);
 	    }
+	    // Zero spares on a populated array is worth seeing written down: it
+	    // is the difference between a rebuild that starts by itself and one
+	    // that waits for someone to walk to the rack.
+	    if (c.spares !== undefined && c.spares !== null) {
+		bits.push(Ext.String.format(gettext('{0} spare(s)'), c.spares));
+	    }
+	    if (c.unassigned) {
+		bits.push(Ext.String.format(gettext('{0} unassigned'), c.unassigned));
+	    }
 
 	    // A missing cache capacitor drops the controller back to
 	    // write-through, which is a large silent performance loss.
@@ -654,6 +669,16 @@ Ext.define('PVE.hpe.ILOPanel', {
 
     items: [
 	{
+	    // Deliberately the first thing on the page and impossible to miss.
+	    // Everything below it is detail you go looking for; this is the part
+	    // that has to work when nobody is looking for anything.
+	    xtype: 'component',
+	    itemId: 'banner',
+	    padding: '10 12',
+	    style: 'user-select: text;',
+	    html: '',
+	},
+	{
 	    xtype: 'component',
 	    itemId: 'statusbar',
 	    padding: 10,
@@ -686,9 +711,77 @@ Ext.define('PVE.hpe.ILOPanel', {
 	this.down('#statusbar').setHtml(html);
     },
 
+    // One banner summarising every rule in PVE::HPEiLO::Check, which is the
+    // same evaluation the notifier sends by mail. If the two ever disagree,
+    // the bug is here, not there.
+    updateBanner: function(issues) {
+	let me = this;
+	let banner = me.down('#banner');
+
+	let styles = {
+	    critical: { bg: '#FDE7E4', border: '#FF6C59', fg: '#8B2114',
+		icon: 'fa-times-circle' },
+	    warning: { bg: '#FFF4E0', border: '#FF9900', fg: '#7A4A00',
+		icon: 'fa-exclamation-triangle' },
+	    info: { bg: '#E7F1FD', border: '#3892D4', fg: '#1B4E75',
+		icon: 'fa-info-circle' },
+	    ok: { bg: '#E8F7EC', border: '#21BF4B', fg: '#14622A',
+		icon: 'fa-check-circle' },
+	};
+
+	issues = issues || [];
+
+	let counts = { critical: 0, warning: 0, info: 0 };
+	Ext.Array.each(issues, (i) => {
+	    if (counts[i.severity] !== undefined) {
+		counts[i.severity]++;
+	    }
+	});
+
+	let level = 'ok';
+	if (counts.critical) {
+	    level = 'critical';
+	} else if (counts.warning) {
+	    level = 'warning';
+	} else if (counts.info) {
+	    level = 'info';
+	}
+
+	let s = styles[level];
+	let headline;
+
+	if (level === 'ok') {
+	    headline = gettext('All hardware checks passing');
+	} else {
+	    let parts = [];
+	    if (counts.critical) {
+		parts.push(Ext.String.format(gettext('{0} critical'), counts.critical));
+	    }
+	    if (counts.warning) {
+		parts.push(Ext.String.format(gettext('{0} warning(s)'), counts.warning));
+	    }
+	    if (counts.info) {
+		parts.push(Ext.String.format(gettext('{0} in progress'), counts.info));
+	    }
+	    headline = parts.join(' · ');
+	}
+
+	let list = issues.map(
+	    (i) => `<li style="margin-top:2px;">${Ext.htmlEncode(i.text)}</li>`).join('');
+
+	banner.setHtml(
+	    `<div style="background:${s.bg};border-left:4px solid ${s.border};` +
+	    `color:${s.fg};border-radius:3px;padding:8px 12px;">` +
+	    `<div style="font-size:14px;font-weight:600;">` +
+	    `<i class="fa ${s.icon}"></i> ${Ext.htmlEncode(headline)}</div>` +
+	    (list ? `<ul style="margin:6px 0 0 18px;padding:0;">${list}</ul>` : '') +
+	    `</div>`);
+    },
+
     updateView: function(data) {
 	let me = this;
 
+	me.updateBanner(data.issues);
 	me.down('#temperatures').getStore().loadData(data.temperatures || []);
 	me.down('#fans').getStore().loadData(data.fans || []);
 	me.down('#power').updateData(data.power);

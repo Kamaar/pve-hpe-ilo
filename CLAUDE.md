@@ -161,6 +161,51 @@ to test against real hardware from the dev machine.
 `storage`) fail independently into `errors.<section>`, so one unsupported
 endpoint on old firmware does not blank the whole panel.
 
+### One evaluation, two consumers
+
+`PVE::HPEiLO::Check::evaluate($sample)` is the only place that decides what
+counts as a problem. Both the banner at the top of the panel and the notifier
+on the timer render its output. **Do not add a rule to one of them.** Two sets
+of rules drift, and the day they disagree is the day the panel says everything
+is fine while the mail says otherwise.
+
+It is pure — no I/O, no clock, no config — which is what makes `t/check.t`
+possible. That matters more here than anywhere else in the package: the
+conditions being detected cannot be produced on demand, so those tests are the
+only coverage they will ever get. **Anything added to `evaluate()` needs a
+fixture in `t/check.t`, including the case that must stay silent.**
+
+The silent case is not decoration. `08-HD Max` sits at 50 °C against a 60 °C
+warning on the reference machine; if that ever raises a warning the banner is
+permanently amber, and a banner that is always amber is a banner nobody reads.
+
+`evaluate()` is called from `API.pm` rather than stored in the cache, so it
+accounts for the staleness decision made at read time and so that changing a
+rule takes effect without waiting for a poll.
+
+`diff()` is what keeps the mailbox usable: the notifier compares issue **keys**
+against the previous run and notifies only on change. A drive that has been at
+three reallocated sectors for a month must not say so every fifteen minutes.
+Keys are therefore stable identities (`pd:1I:3:2:defects`), while the text may
+be reworded freely — and note that a rising defect count reuses its key, so it
+does not re-notify.
+
+State lives in `/var/lib/pve-hpe-ilo/check-state.json`, not `/run`: it has to
+survive a reboot, or every boot re-announces every standing issue.
+
+`PVE::Notify` is **not a supported API** — it belongs to `libpve-notify-perl`
+and Proxmox may change it without warning. Every call is wrapped, and failure
+degrades to writing the message to stderr, where the unit puts it in the
+journal. A monitor that dies because its own alerting broke is worse than no
+monitor.
+
+The check unit is deliberately **less** sandboxed than the poller: it reaches
+into PVE's notification system, which reads `/etc/pve`, may exec a mail
+transport, and talks to the network. `PrivateDevices=yes` on the poller already
+cost an afternoon when the smartctl enrichment could not see `/dev/sg*`; do not
+repeat that here. It also sets `SuccessExitStatus=0 1`, because `check` exits 1
+while an issue is outstanding and that is a report, not a unit failure.
+
 ### Smart Array: why it is on a separate schedule
 
 `read_storage()` walks the OEM `SmartStorage` tree, which means **one HTTP

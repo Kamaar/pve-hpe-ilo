@@ -153,6 +153,34 @@ later. Configuration on Gen9 needs `ssacli` running on the host.
 Absent fan bays and unpopulated sensors are filtered out: iLO lists them with a
 reading of 0, which would otherwise show up as a dead fan and a frozen CPU.
 
+## Warnings, in the panel and by mail
+
+A banner at the top of the tab summarises every check: green when nothing is
+wrong, amber or red with the specific findings when something is. It covers
+sensor thresholds, fans pinned near maximum, power supply health, controller
+and array health, the cache backup capacitor, drives approaching their trip
+temperature, and any drive that has started reallocating sectors.
+
+The same evaluation runs on a timer every fifteen minutes and sends a
+notification **through Proxmox's own notification system** — so it arrives
+wherever your backup mail already goes, with no separate mail configuration.
+
+```sh
+pve-hpe-ilo check --dry-run    # show what it would send, change nothing
+pve-hpe-ilo check --force      # send even when nothing changed, to test the path
+systemctl disable --now pve-hpe-ilo-check.timer   # turn the notifications off
+```
+
+It notifies on **change**, not on state. A drive that has been at three
+reallocated sectors for a month says so once, not ninety-six times a day —
+otherwise the mail gets filtered and the next real failure goes unread.
+
+Two deliberate choices worth knowing. `PVE::Notify` is not a supported public
+API, so every call is wrapped: if Proxmox changes it, the message goes to the
+journal instead of vanishing. And a sensor with no threshold is never judged —
+most iLO 4 sensors report none, and inventing a ceiling would make the banner
+lie.
+
 ### Locate LED
 
 The physical drive grid has a lightbulb button per bay that lights the drive's

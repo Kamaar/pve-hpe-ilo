@@ -10,6 +10,10 @@ use JSON;
 use constant CONFIG_FILE => '/etc/pve-hpe-ilo/config.json';
 use constant CACHE_FILE  => '/run/pve-hpe-ilo/telemetry.json';
 
+# What the notifier reported last time. Unlike the cache this must survive a
+# reboot, or every boot would re-announce every standing issue.
+use constant STATE_FILE  => '/var/lib/pve-hpe-ilo/check-state.json';
+
 my $defaults = {
     port     => 443,
     insecure => 1,      # iLO ships a self-signed cert by default

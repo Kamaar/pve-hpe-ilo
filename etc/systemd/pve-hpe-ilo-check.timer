@@ -1,0 +1,23 @@
+[Unit]
+Description=Periodic HPE iLO hardware check
+Documentation=man:pve-hpe-ilo(8)
+
+[Timer]
+# Late enough after boot that the poller has completed its first sample,
+# including the Smart Array walk, which takes the best part of a minute.
+OnBootSec=5min
+
+# Fifteen minutes is the compromise: a failed drive is known within a quarter
+# of an hour, and a machine that is fine wakes up rarely enough to cost
+# nothing. Nothing this watches changes faster than that -- a disk starts
+# reallocating sectors over weeks.
+OnUnitActiveSec=15min
+
+# Keeps a rack full of nodes from all mailing at the same instant.
+RandomizedDelaySec=2min
+
+# Run once after downtime rather than silently skipping the window.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

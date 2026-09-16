@@ -12,7 +12,7 @@ SRC="$(cd "$(dirname "$0")" && pwd)"
 PERL_DIR="/usr/share/perl5/PVE/HPEiLO"
 JS_DIR="/usr/share/pve-manager/js"
 CONF_DIR="/etc/pve-hpe-ilo"
-UNIT="/etc/systemd/system/pve-hpe-ilo.service"
+UNIT_DIR="/etc/systemd/system"
 APT_HOOK="/etc/apt/apt.conf.d/99-pve-hpe-ilo"
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -29,9 +29,13 @@ if [ "${1:-}" = "--uninstall" ]; then
     echo "removing hooks from the Proxmox files..."
     /usr/sbin/pve-hpe-ilo-patch --remove || true
 
+    systemctl disable --now pve-hpe-ilo-check.timer 2>/dev/null || true
     systemctl disable --now pve-hpe-ilo.service 2>/dev/null || true
 
-    rm -f "$UNIT" "$APT_HOOK"
+    rm -f "$UNIT_DIR/pve-hpe-ilo.service" \
+	  "$UNIT_DIR/pve-hpe-ilo-check.service" \
+	  "$UNIT_DIR/pve-hpe-ilo-check.timer" \
+	  "$APT_HOOK"
     rm -f /usr/sbin/pve-hpe-ilo /usr/sbin/pve-hpe-ilo-poller /usr/sbin/pve-hpe-ilo-patch
     rm -f "$JS_DIR/pve-hpe-ilo.js"
     rm -rf "$PERL_DIR" /var/lib/pve-hpe-ilo
@@ -70,8 +74,10 @@ install -m 0755 "$SRC/scripts/pve-hpe-ilo-patch"  /usr/sbin/pve-hpe-ilo-patch
 echo "installing the panel to $JS_DIR"
 install -m 0644 "$SRC/js/pve-hpe-ilo.js" "$JS_DIR/pve-hpe-ilo.js"
 
-echo "installing the systemd unit and apt hook"
-install -m 0644 "$SRC/etc/systemd/pve-hpe-ilo.service" "$UNIT"
+echo "installing the systemd units and apt hook"
+for unit in "$SRC"/etc/systemd/*.service "$SRC"/etc/systemd/*.timer; do
+    install -m 0644 "$unit" "$UNIT_DIR/"
+done
 install -m 0644 "$SRC/etc/apt/99-pve-hpe-ilo" "$APT_HOOK"
 
 install -d -m 0700 "$CONF_DIR"
@@ -102,8 +108,9 @@ Installed. The service is NOT started yet, because the config file still holds
 the example credentials.
 
   1. edit $CONF_DIR/config.json   (host, username, password)
-  2. pve-hpe-ilo probe                     # verify iLO answers
-  3. systemctl enable --now pve-hpe-ilo    # start sampling
+  2. pve-hpe-ilo probe                          # verify iLO answers
+  3. systemctl enable --now pve-hpe-ilo         # start sampling
+  4. systemctl enable --now pve-hpe-ilo-check.timer   # notify on changes
 
 Then reload the Proxmox GUI with a hard refresh (Ctrl-Shift-R) and open
 any node: a "Hardware (iLO)" tab appears in the left-hand list.
@@ -111,6 +118,12 @@ EOF
 else
     systemctl enable pve-hpe-ilo.service
     systemctl restart pve-hpe-ilo.service
+
+    # Enabled only where the poller is already configured, so a fresh install
+    # cannot mail about a machine that has not been set up yet.
+    systemctl enable --now pve-hpe-ilo-check.timer
     echo
     echo "Installed and restarted. Hard-refresh the GUI (Ctrl-Shift-R)."
+    echo "Hardware checks run every 15 minutes; 'systemctl disable --now"
+    echo "pve-hpe-ilo-check.timer' turns the notifications off."
 fi
