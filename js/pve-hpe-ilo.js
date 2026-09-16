@@ -1032,6 +1032,13 @@ Ext.define('PVE.hpe.SummaryBanner', {
  * that was actually patched, injected says whether the graft then happened. */
 PVE.hpe.injected = false;
 PVE.hpe.overrideInstalled = false;
+
+/* Two flags, not one, because they answer different questions. The override is
+ * registered when this file loads; summaryInjected only flips once a Summary
+ * page has actually been built, which has not happened if you navigated
+ * straight to another tab. Reading false on the second while the first is true
+ * means "not opened yet", not "broken". */
+PVE.hpe.summaryOverrideInstalled = false;
 PVE.hpe.summaryInjected = false;
 
 /* The Summary page is an ordinary container, not the treelist-backed Config
@@ -1066,6 +1073,8 @@ Ext.define('PVE.hpe.SummaryOverride', {
 	}
     },
 });
+
+PVE.hpe.summaryOverrideInstalled = true;
 
 PVE.hpe.nodeConfigOverride = function() {
     let me = this;

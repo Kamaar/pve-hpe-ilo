@@ -172,9 +172,12 @@ sub print_sample {
 		$c->{health} // '-', $c->{firmware} // '-',
 		defined $c->{cache_mib} ? "$c->{cache_mib} MiB" : '-',
 		$c->{backup_power} // '-');
+	    # '-' rather than 0: this firmware reports these as null, and
+	    # printing a zero would claim the array has no spare when in fact
+	    # nobody asked the controller.
 	    printf("    mode %s, rebuild priority %s, %s spare(s), %s unassigned\n",
 		$c->{mode} // '-', $c->{rebuild_priority} // '-',
-		$c->{spares} // 0, $c->{unassigned} // 0);
+		$c->{spares} // '-', $c->{unassigned} // '-');
 
 	    for my $ld (@{ $c->{logical_drives} // [] }) {
 		my $size = defined $ld->{capacity_mib}

@@ -212,8 +212,13 @@ needs: at 95% it is nearly done, not nearly on fire.
 an ordinary container, so `insert(0, ...)` after `callParent()` does render
 there — unlike the treelist-backed Config panel. It is kept independent on
 purpose: if it ever stops working, the tab and the notifications are
-unaffected. `PVE.hpe.summaryInjected` is its console flag. It renders nothing
-at all when healthy.
+unaffected. It renders nothing at all when healthy.
+
+It has **two** console flags, and confusing them wastes a diagnosis:
+`PVE.hpe.summaryOverrideInstalled` is set when this file loads, while
+`PVE.hpe.summaryInjected` only flips once a Summary page has actually been
+constructed. Navigating straight to another tab leaves the second false with
+nothing wrong. Same trap as reading `injected` before any node view exists.
 
 The check unit is deliberately **less** sandboxed than the poller: it reaches
 into PVE's notification system, which reads `/etc/pve`, may exec a mail
