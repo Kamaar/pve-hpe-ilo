@@ -14,6 +14,7 @@ JS_DIR="/usr/share/pve-manager/js"
 CONF_DIR="/etc/pve-hpe-ilo"
 UNIT_DIR="/etc/systemd/system"
 APT_HOOK="/etc/apt/apt.conf.d/99-pve-hpe-ilo"
+TEMPLATE_DIR="/etc/pve/notification-templates/default"
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "must run as root" >&2
@@ -36,6 +37,7 @@ if [ "${1:-}" = "--uninstall" ]; then
 	  "$UNIT_DIR/pve-hpe-ilo-check.service" \
 	  "$UNIT_DIR/pve-hpe-ilo-check.timer" \
 	  "$APT_HOOK"
+    rm -f "$TEMPLATE_DIR"/pve-hpe-ilo-*.hbs
     rm -f /usr/sbin/pve-hpe-ilo /usr/sbin/pve-hpe-ilo-poller /usr/sbin/pve-hpe-ilo-patch
     rm -f "$JS_DIR/pve-hpe-ilo.js"
     rm -rf "$PERL_DIR" /var/lib/pve-hpe-ilo
@@ -79,6 +81,18 @@ for unit in "$SRC"/etc/systemd/*.service "$SRC"/etc/systemd/*.timer; do
     install -m 0644 "$unit" "$UNIT_DIR/"
 done
 install -m 0644 "$SRC/etc/apt/99-pve-hpe-ilo" "$APT_HOOK"
+
+# Notification templates. PVE resolves a template name against this override
+# directory before its own, and ships no generic one to borrow -- 9.2.20 has
+# templates only for fencing, package-updates, replication, test and vzdump.
+# They live under /etc/pve so they survive upgrades and reach every node.
+if [ -d /etc/pve ]; then
+    echo "installing the notification template to $TEMPLATE_DIR"
+    install -d -m 0755 "$TEMPLATE_DIR"
+    install -m 0644 "$SRC"/etc/notification-templates/*.hbs "$TEMPLATE_DIR/"
+else
+    echo "WARNING: /etc/pve is not mounted; notification template not installed" >&2
+fi
 
 install -d -m 0700 "$CONF_DIR"
 if [ ! -f "$CONF_DIR/config.json" ]; then
