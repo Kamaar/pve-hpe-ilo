@@ -88,8 +88,20 @@ install -m 0644 "$SRC/etc/apt/99-pve-hpe-ilo" "$APT_HOOK"
 # They live under /etc/pve so they survive upgrades and reach every node.
 if [ -d /etc/pve ]; then
     echo "installing the notification template to $TEMPLATE_DIR"
-    install -d -m 0755 "$TEMPLATE_DIR"
-    install -m 0644 "$SRC"/etc/notification-templates/*.hbs "$TEMPLATE_DIR/"
+
+    # /etc/pve is pmxcfs, which owns its own permissions and refuses chmod, so
+    # `install -m` fails there even though the copy itself succeeds. Use cp.
+    #
+    # And never let this abort the run: everything below -- the hooks, the
+    # daemon restarts, enabling the timer -- matters more than a template, and
+    # with set -e a non-zero exit here silently skipped all of it.
+    if mkdir -p "$TEMPLATE_DIR" 2>/dev/null &&
+	    cp "$SRC"/etc/notification-templates/*.hbs "$TEMPLATE_DIR/" 2>/dev/null; then
+	:
+    else
+	echo "WARNING: could not install the notification template;" \
+	    "notifications will fall back to the journal" >&2
+    fi
 else
     echo "WARNING: /etc/pve is not mounted; notification template not installed" >&2
 fi

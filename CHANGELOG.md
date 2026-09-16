@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.1.1 — 2026-09-16
+
+**Anyone on 1.1.0 should update: notifications did not actually deliver.**
+
+Everything below was found by running `pve-hpe-ilo check --force` on real
+hardware for the first time. All of it passed the offline tests; none of it
+survived contact with an actual send.
+
+- **The template did not exist.** PVE 9.2.20 ships templates only for fencing,
+  package-updates, replication, test and vzdump — the `simple` one this asked
+  for is not among them, and there is no generic template to borrow. The
+  package now brings its own and installs it to
+  `/etc/pve/notification-templates/default`, which PVE resolves before its own
+  directory, and which survives upgrades and reaches every node in a cluster.
+- **Failures were reported as successes.** `PVE::Notify` does not die when a
+  target fails; it prints the error to stderr and returns normally, so the
+  absence of an exception meant nothing. An alerting path that claims success
+  when it failed is worse than one that fails loudly. The call now captures
+  stderr and reads it, and a failure degrades to the journal with the CLI
+  saying so.
+- **`install.sh` aborted partway.** `/etc/pve` is pmxcfs, which owns its own
+  permissions and refuses chmod, so `install -m` failed there — and under
+  `set -e` that silently skipped the hooks, the daemon restarts and enabling
+  the timer. The template step now uses `cp` and can no longer abort the run.
+- The two summary-banner console flags are separated:
+  `summaryOverrideInstalled` means the override is registered,
+  `summaryInjected` means a banner has been placed. The second is false until
+  a Summary page has been opened, which is not a fault.
+- The CLI printed `0 spare(s)` where the controller reports the field as null.
+  iLO 4 on a Gen9 exposes neither `SparePhysicalDriveCount` nor
+  `UnassignedPhysicalDriveCount` nor `RebuildPriority`; absent is now shown as
+  absent.
+
 ## 1.1.0 — 2026-09-16
 
 The panel stops being something you have to remember to look at.

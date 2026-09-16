@@ -199,6 +199,22 @@ degrades to writing the message to stderr, where the unit puts it in the
 journal. A monitor that dies because its own alerting broke is worse than no
 monitor.
 
+**It also does not die when a target fails.** It prints `ERROR: could not
+notify via target ...` to stderr and returns normally, so `eval { notify() }`
+succeeding means nothing. `Notify.pm` captures stderr around the call and
+inspects it. Do not simplify that away: reporting a delivery that never
+happened is the one failure an alerting path cannot have, and it shipped that
+way in 1.1.0.
+
+**The package ships its own notification template.** PVE 9.2.20 has templates
+only for fencing, package-updates, replication, test and vzdump; there is no
+generic one, and the `simple` name that forum examples use does not resolve.
+Ours goes to `/etc/pve/notification-templates/default` as
+`pve-hpe-ilo-{subject.txt,body.txt,body.html}.hbs`, which PVE checks before its
+own directory. Install it with `cp`, never `install -m`: `/etc/pve` is pmxcfs,
+which owns its permissions and refuses chmod — and under `set -e` that failure
+silently skipped the rest of the installer.
+
 **The bars are coloured by the same thresholds.** `PVE.hpe.renderBar` takes an
 explicit `{warning, critical}`; shading by percentage of the maximum was the
 obvious approach and it was wrong, because a sensor at 50 °C against a 60 °C
